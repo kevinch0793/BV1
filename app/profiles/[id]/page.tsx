@@ -56,7 +56,7 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
       </div>
 
       {/* Parse an existing resume to auto-fill everything below */}
-      <Card title="Parse a resume" subtitle="Upload a PDF or paste text — Claude fills the sections below for you.">
+      <Card title="Parse a resume" subtitle="Auto-fill this profile from an existing resume.">
         <ResumeParser profileId={profile.id} />
       </Card>
 
