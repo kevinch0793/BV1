@@ -21,13 +21,16 @@ import {
 import { deleteJob } from "@/app/actions/jobs";
 import { JobAdder } from "./JobAdder";
 import { ResumeParser } from "./ResumeParser";
+import { CollapsibleItem } from "@/components/CollapsibleItem";
+import { DirtyForm } from "@/components/DirtyForm";
 
 export const dynamic = "force-dynamic";
 
 const input =
   "w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500";
 const labelCls = "flex flex-col gap-1 text-xs font-medium text-neutral-600";
-const saveBtn = "rounded-md bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700";
+const saveBtn =
+  "rounded-md bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-neutral-900";
 const delBtn = "rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50";
 
 export default async function ProfileEditor({ params }: { params: Promise<{ id: string }> }) {
@@ -62,7 +65,7 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
 
       {/* Basics */}
       <Card title="Basics">
-        <form action={updateProfileBasics.bind(null, profile.id)} className="space-y-3">
+        <DirtyForm action={updateProfileBasics.bind(null, profile.id)} className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className={labelCls}>Profile label<input name="label" defaultValue={profile.label} className={input} /></label>
             <label className={labelCls}>Full name<input name="fullName" defaultValue={profile.fullName} className={input} /></label>
@@ -77,8 +80,8 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
             Summary
             <textarea name="summary" defaultValue={profile.summary ?? ""} rows={3} className={input} />
           </label>
-          <button className={saveBtn}>Save basics</button>
-        </form>
+          <button data-save className={saveBtn}>Save basics</button>
+        </DirtyForm>
       </Card>
 
       {/* Experience */}
@@ -91,9 +94,15 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
         }
       >
         {profile.experiences.length === 0 && <Empty>No experience yet.</Empty>}
-        <div className="space-y-4">
+        <div className="space-y-3">
           {profile.experiences.map((e) => (
-            <form key={e.id} action={updateExperience.bind(null, e.id, profile.id)} className="rounded-lg border border-neutral-200 p-3">
+            <CollapsibleItem
+              key={e.id}
+              summary={e.role || e.company ? `${e.role || "Role"}${e.company ? ` — ${e.company}` : ""}` : "New experience"}
+              meta={[e.startDate, e.current ? "Present" : e.endDate].filter(Boolean).join(" – ")}
+              defaultOpen={!e.company && !e.role}
+            >
+            <DirtyForm action={updateExperience.bind(null, e.id, profile.id)}>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className={labelCls}>Role<input name="role" defaultValue={e.role} className={input} /></label>
                 <label className={labelCls}>Company<input name="company" defaultValue={e.company} className={input} /></label>
@@ -111,10 +120,11 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
                 <textarea name="bullets" rows={3} defaultValue={asStringArray(e.bullets).join("\n")} className={input} />
               </label>
               <div className="mt-2 flex gap-2">
-                <button className={saveBtn}>Save</button>
+                <button data-save className={saveBtn}>Save</button>
                 <button formAction={deleteExperience.bind(null, e.id, profile.id)} className={delBtn}>Delete</button>
               </div>
-            </form>
+            </DirtyForm>
+            </CollapsibleItem>
           ))}
         </div>
       </Card>
@@ -130,9 +140,15 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
         }
       >
         {profile.projects.length === 0 && <Empty>No projects yet.</Empty>}
-        <div className="space-y-4">
+        <div className="space-y-3">
           {profile.projects.map((p) => (
-            <form key={p.id} action={updateProject.bind(null, p.id, profile.id)} className="rounded-lg border border-neutral-200 p-3">
+            <CollapsibleItem
+              key={p.id}
+              summary={p.name || p.type ? `${p.name || "Project"}${p.type ? ` — ${p.type}` : ""}` : "New project"}
+              meta={p.company ?? undefined}
+              defaultOpen={!p.name && !p.type}
+            >
+            <DirtyForm action={updateProject.bind(null, p.id, profile.id)}>
               <div className="grid gap-3 sm:grid-cols-3">
                 <label className={labelCls}>Name *<input name="name" defaultValue={p.name} className={input} required /></label>
                 <label className={labelCls}>Type *<input name="type" defaultValue={p.type} placeholder="e.g. Internal platform" className={input} required /></label>
@@ -144,10 +160,11 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
                 <textarea name="bullets" rows={3} defaultValue={asStringArray(p.bullets).join("\n")} className={input} />
               </label>
               <div className="mt-2 flex gap-2">
-                <button className={saveBtn}>Save</button>
+                <button data-save className={saveBtn}>Save</button>
                 <button formAction={deleteProject.bind(null, p.id, profile.id)} className={delBtn}>Delete</button>
               </div>
-            </form>
+            </DirtyForm>
+            </CollapsibleItem>
           ))}
         </div>
       </Card>
@@ -162,9 +179,15 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
         }
       >
         {profile.education.length === 0 && <Empty>No education yet.</Empty>}
-        <div className="space-y-4">
+        <div className="space-y-3">
           {profile.education.map((ed) => (
-            <form key={ed.id} action={updateEducation.bind(null, ed.id, profile.id)} className="rounded-lg border border-neutral-200 p-3">
+            <CollapsibleItem
+              key={ed.id}
+              summary={ed.school || ed.degree ? `${ed.school || "School"}${ed.degree ? ` — ${ed.degree}` : ""}` : "New education"}
+              meta={[ed.startDate, ed.endDate].filter(Boolean).join(" – ")}
+              defaultOpen={!ed.school && !ed.degree && !ed.field}
+            >
+            <DirtyForm action={updateEducation.bind(null, ed.id, profile.id)}>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className={labelCls}>School<input name="school" defaultValue={ed.school} className={input} /></label>
                 <label className={labelCls}>Degree<input name="degree" defaultValue={ed.degree ?? ""} className={input} /></label>
@@ -174,17 +197,18 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
                 <label className={labelCls}>End<input name="endDate" defaultValue={ed.endDate ?? ""} className={input} /></label>
               </div>
               <div className="mt-2 flex gap-2">
-                <button className={saveBtn}>Save</button>
+                <button data-save className={saveBtn}>Save</button>
                 <button formAction={deleteEducation.bind(null, ed.id, profile.id)} className={delBtn}>Delete</button>
               </div>
-            </form>
+            </DirtyForm>
+            </CollapsibleItem>
           ))}
         </div>
       </Card>
 
       {/* Skills */}
       <Card title="Skills" subtitle="One group per line. Format: Category: item, item, item">
-        <form action={setSkills.bind(null, profile.id)} className="space-y-2">
+        <DirtyForm action={setSkills.bind(null, profile.id)} className="space-y-2">
           <textarea
             name="skills"
             rows={4}
@@ -192,16 +216,16 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
             defaultValue={skillsToText(profile.skills)}
             placeholder={"Languages: Python, Go, TypeScript\nML: PyTorch, JAX"}
           />
-          <button className={saveBtn}>Save skills</button>
-        </form>
+          <button data-save className={saveBtn}>Save skills</button>
+        </DirtyForm>
       </Card>
 
       {/* Base resume */}
       <Card title="Base resume (optional)" subtitle="Paste your existing resume text. Enables 'tailor from base' mode.">
-        <form action={saveBaseResume.bind(null, profile.id)} className="space-y-2">
+        <DirtyForm action={saveBaseResume.bind(null, profile.id)} className="space-y-2">
           <textarea name="rawText" rows={8} className={input} defaultValue={profile.baseResume?.rawText ?? ""} />
-          <button className={saveBtn}>Save base resume</button>
-        </form>
+          <button data-save className={saveBtn}>Save base resume</button>
+        </DirtyForm>
       </Card>
 
       {/* Jobs */}

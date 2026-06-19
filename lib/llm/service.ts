@@ -21,8 +21,11 @@ export function asStringArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 }
 
-const PARSE_SYSTEM =
-  "You parse a candidate's resume into structured profile data. Extract faithfully — never invent employers, dates, degrees, or metrics. Keep bullet wording close to the source. For each project, infer a short category for its 'type' (e.g. 'Web app', 'ML model', 'Internal platform'). Leave any field empty when the resume doesn't provide it.";
+const PARSE_SYSTEM = [
+  "You parse a candidate's resume into structured profile data. Extract faithfully — never invent employers, dates, degrees, or metrics. Keep bullet wording close to the source.",
+  "Completeness is critical: extract EVERY work-experience entry as its own object — one per role/company — in reverse-chronological order. Do not merge multiple roles into one, do not summarize the list, and never drop earlier or older positions. If the same company appears with multiple titles, output one entry per title. Apply the same rule to education and projects.",
+  "For each project, infer a short category for its 'type' (e.g. 'Web app', 'ML model', 'Internal platform'). Leave any field empty when the resume doesn't provide it.",
+].join(" ");
 
 const PARSE_INSTRUCTION =
   "Parse this resume into the structured profile schema (basics, work experience, education, projects, skills).";
@@ -36,7 +39,7 @@ export async function parseResume(input: { text: string }): Promise<ParsedProfil
     schema: ParsedProfileSchema,
     schemaName: "parsed_profile",
     system: PARSE_SYSTEM,
-    maxTokens: 6000,
+    maxTokens: 16000,
     prompt: `${PARSE_INSTRUCTION}\n\n"""\n${text.slice(0, 60000)}\n"""`,
   });
 }
