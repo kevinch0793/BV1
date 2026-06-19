@@ -33,12 +33,16 @@ export const MODEL_OPTIONS = [
 export async function generateStructured<T>({
   schema,
   prompt,
+  content,
   system,
   model = DEFAULT_MODEL,
   maxTokens = 16000,
 }: {
   schema: z.ZodType<T>;
-  prompt: string;
+  /** Plain-text user message. Ignored if `content` is provided. */
+  prompt?: string;
+  /** Structured user content blocks (e.g. a PDF document + instruction). */
+  content?: Anthropic.MessageParam["content"];
   system?: string;
   model?: string;
   maxTokens?: number;
@@ -47,7 +51,7 @@ export async function generateStructured<T>({
     model,
     max_tokens: maxTokens,
     system,
-    messages: [{ role: "user", content: prompt }],
+    messages: [{ role: "user", content: content ?? prompt ?? "" }],
     output_config: { format: zodOutputFormat(schema) },
   });
 

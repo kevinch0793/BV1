@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { parseResume } from "@/lib/llm/service";
 
 function lines(v: FormDataEntryValue | null): string[] {
   return String(v ?? "")
@@ -154,6 +155,151 @@ export async function setSkills(profileId: string, formData: FormData) {
   }
   if (toCreate.length) await prisma.skill.createMany({ data: toCreate });
   revalidatePath(`/profiles/${profileId}`);
+}
+
+// ---- Parse resume → auto-fill profile ---------------------------------------
+
+export type ParseResult = {
+  ok: boolean;
+  error?: string;
+  summary?: { experiences: number; education: number; projects: number; skills: number };
+};
+
+export async function parseResumeIntoProfile(
+  profileId: string,
+  formData: FormData,
+): Promise<ParseResult> {
+  const file = formData.get("file");
+  const pastedText = str(formData.get("text"));
+
+  let resumeText: string;
+
+  try {
+    if (file instanceof File && file.size > 0) {
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      const buf = Buffer.from(await file.arrayBuffer());
+      if (isPdf) {
+        // Extract text locally (no native deps) before sending to OpenAI.
+        const { extractText, getDocumentProxy } = await import("unpdf");
+        const pdf = await getDocumentProxy(new Uint8Array(buf));
+        const { text } = await extractText(pdf, { mergePages: true });
+        resumeText = text.trim();
+        if (resumeText.length < 30) {
+          return {
+            ok: false,
+            error: "Couldn't read text from that PDF (it may be scanned/image-only). Paste the text instead.",
+          };
+        }
+      } else {
+        resumeText = buf.toString("utf-8");
+      }
+    } else if (pastedText) {
+      resumeText = pastedText;
+    } else {
+      return { ok: false, error: "Paste resume text or choose a file first." };
+    }
+  } catch (e) {
+    return { ok: false, error: `Could not read input: ${(e as Error).message}` };
+  }
+
+  const rawTextForBase = resumeText;
+
+  let parsed;
+  try {
+    parsed = await parseResume({ text: resumeText });
+  } catch (e) {
+    return { ok: false, error: `Parsing failed: ${(e as Error).message}` };
+  }
+
+  // Replace the structured sections + basics in one transaction.
+  await prisma.$transaction(async (tx) => {
+    await tx.profile.update({
+      where: { id: profileId },
+      data: {
+        fullName: parsed.fullName || undefined,
+        email: parsed.email || null,
+        phone: parsed.phone || null,
+        location: parsed.location || null,
+        summary: parsed.summary || null,
+        links: {
+          linkedin: parsed.links.linkedin,
+          github: parsed.links.github,
+          portfolio: parsed.links.portfolio,
+        },
+      },
+    });
+
+    await tx.experience.deleteMany({ where: { profileId } });
+    await tx.education.deleteMany({ where: { profileId } });
+    await tx.project.deleteMany({ where: { profileId } });
+    await tx.skill.deleteMany({ where: { profileId } });
+
+    for (const [i, e] of parsed.experiences.entries()) {
+      await tx.experience.create({
+        data: {
+          profileId,
+          company: e.company,
+          role: e.role,
+          location: e.location || null,
+          startDate: e.startDate || null,
+          endDate: e.endDate || null,
+          current: e.current,
+          bullets: e.bullets,
+          order: i,
+        },
+      });
+    }
+    for (const [i, ed] of parsed.education.entries()) {
+      await tx.education.create({
+        data: {
+          profileId,
+          school: ed.school,
+          degree: ed.degree || null,
+          field: ed.field || null,
+          startDate: ed.startDate || null,
+          endDate: ed.endDate || null,
+          gpa: ed.gpa || null,
+          order: i,
+        },
+      });
+    }
+    for (const [i, p] of parsed.projects.entries()) {
+      await tx.project.create({
+        data: {
+          profileId,
+          name: p.name,
+          type: p.type || "Project",
+          company: p.company || null,
+          description: p.description || null,
+          bullets: p.bullets,
+          order: i,
+        },
+      });
+    }
+    const skillRows = parsed.skills.flatMap((s) =>
+      s.items.map((name) => ({ profileId, name, category: s.category || null })),
+    );
+    if (skillRows.length) await tx.skill.createMany({ data: skillRows });
+
+    if (rawTextForBase) {
+      await tx.baseResume.upsert({
+        where: { profileId },
+        create: { profileId, rawText: rawTextForBase },
+        update: { rawText: rawTextForBase },
+      });
+    }
+  });
+
+  revalidatePath(`/profiles/${profileId}`);
+  return {
+    ok: true,
+    summary: {
+      experiences: parsed.experiences.length,
+      education: parsed.education.length,
+      projects: parsed.projects.length,
+      skills: parsed.skills.reduce((n, s) => n + s.items.length, 0),
+    },
+  };
 }
 
 // ---- Base resume ------------------------------------------------------------

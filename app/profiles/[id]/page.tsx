@@ -20,6 +20,7 @@ import {
 } from "@/app/actions/profiles";
 import { deleteJob } from "@/app/actions/jobs";
 import { JobAdder } from "./JobAdder";
+import { ResumeParser } from "./ResumeParser";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,11 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
           Tailor a resume →
         </Link>
       </div>
+
+      {/* Parse an existing resume to auto-fill everything below */}
+      <Card title="Parse a resume" subtitle="Upload a PDF or paste text — Claude fills the sections below for you.">
+        <ResumeParser profileId={profile.id} />
+      </Card>
 
       {/* Basics */}
       <Card title="Basics">
