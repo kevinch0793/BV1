@@ -1,0 +1,121 @@
+// Tailored Resume Platform — data model
+// Prisma 7 (queryCompiler + driver adapter). See lib/db.ts for the libSQL adapter wiring.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+/// A distinct identity used to generate resumes (name, contact, history).
+model Profile {
+  id        String   @id @default(cuid())
+  label     String // e.g. "ML Engineer", "Eng Manager"
+  fullName  String
+  email     String?
+  phone     String?
+  location  String?
+  links     Json? // { linkedin, github, portfolio, ... }
+  summary   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  experiences Experience[]
+  education   Education[]
+  projects    Project[]
+  skills      Skill[]
+  baseResume  BaseResume?
+  jobs        JobPosting[]
+  tailored    TailoredResume[]
+}
+
+model Experience {
+  id        String   @id @default(cuid())
+  profileId String
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  company   String
+  role      String
+  location  String?
+  startDate String?
+  endDate   String?
+  current   Boolean  @default(false)
+  bullets   Json? // string[]
+  order     Int      @default(0)
+}
+
+model Education {
+  id        String  @id @default(cuid())
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  school    String
+  degree    String?
+  field     String?
+  startDate String?
+  endDate   String?
+  gpa       String?
+  order     Int     @default(0)
+}
+
+/// Required for from-scratch tailoring: name + type drive generation.
+model Project {
+  id          String  @id @default(cuid())
+  profileId   String
+  profile     Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name        String
+  type        String // e.g. "Ads foundation model", "Internal platform"
+  company     String?
+  description String?
+  bullets     Json? // string[]
+  order       Int     @default(0)
+}
+
+model Skill {
+  id        String  @id @default(cuid())
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name      String
+  category  String?
+}
+
+/// Optional original resume text used by the "tailor from base" mode.
+model BaseResume {
+  id        String   @id @default(cuid())
+  profileId String   @unique
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  rawText   String
+  updatedAt DateTime @updatedAt
+}
+
+/// A job the user wants to apply to, scraped or pasted.
+model JobPosting {
+  id                String   @id @default(cuid())
+  profileId         String
+  profile           Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  url               String?
+  company           String?
+  role              String?
+  location          String?
+  descriptionRaw    String?
+  descriptionParsed Json? // { description, requirements[] }
+  status            String   @default("saved") // saved | applied | archived
+  createdAt         DateTime @default(now())
+
+  tailored TailoredResume[]
+}
+
+/// A generated, JD-tailored resume tied to a profile (and optionally a job).
+model TailoredResume {
+  id           String      @id @default(cuid())
+  profileId    String
+  profile      Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  jobPostingId String?
+  job          JobPosting? @relation(fields: [jobPostingId], references: [id], onDelete: SetNull)
+  templateId   String      @default("classic")
+  mode         String // with_base | from_scratch
+  instructions String?
+  content      Json // ResumeContent
+  createdAt    DateTime    @default(now())
+}
