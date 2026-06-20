@@ -211,75 +211,90 @@ export async function parseResumeIntoProfile(
     return { ok: false, error: `Parsing failed: ${(e as Error).message}` };
   }
 
-  // Replace the structured sections + basics in one transaction.
+  // Update basics + sections in one transaction. To avoid a weak parse wiping
+  // good data, each section is only replaced when the parse actually returned
+  // entries for it; empty sections are left untouched. Basic fields likewise
+  // only overwrite when the parse provided a value.
+  const skillRows = parsed.skills.flatMap((s) =>
+    s.items.map((name) => ({ profileId, name, category: s.category || null })),
+  );
+
   await prisma.$transaction(async (tx) => {
     await tx.profile.update({
       where: { id: profileId },
       data: {
         fullName: parsed.fullName || undefined,
-        email: parsed.email || null,
-        phone: parsed.phone || null,
-        location: parsed.location || null,
-        summary: parsed.summary || null,
-        links: {
-          linkedin: parsed.links.linkedin,
-          github: parsed.links.github,
-          portfolio: parsed.links.portfolio,
-        },
+        email: parsed.email || undefined,
+        phone: parsed.phone || undefined,
+        location: parsed.location || undefined,
+        summary: parsed.summary || undefined,
+        ...(parsed.links.linkedin || parsed.links.github || parsed.links.portfolio
+          ? {
+              links: {
+                linkedin: parsed.links.linkedin,
+                github: parsed.links.github,
+                portfolio: parsed.links.portfolio,
+              },
+            }
+          : {}),
       },
     });
 
-    await tx.experience.deleteMany({ where: { profileId } });
-    await tx.education.deleteMany({ where: { profileId } });
-    await tx.project.deleteMany({ where: { profileId } });
-    await tx.skill.deleteMany({ where: { profileId } });
-
-    for (const [i, e] of parsed.experiences.entries()) {
-      await tx.experience.create({
-        data: {
-          profileId,
-          company: e.company,
-          role: e.role,
-          location: e.location || null,
-          startDate: e.startDate || null,
-          endDate: e.endDate || null,
-          current: e.current,
-          bullets: e.bullets,
-          order: i,
-        },
-      });
+    if (parsed.experiences.length) {
+      await tx.experience.deleteMany({ where: { profileId } });
+      for (const [i, e] of parsed.experiences.entries()) {
+        await tx.experience.create({
+          data: {
+            profileId,
+            company: e.company,
+            role: e.role,
+            location: e.location || null,
+            startDate: e.startDate || null,
+            endDate: e.endDate || null,
+            current: e.current,
+            bullets: e.bullets,
+            order: i,
+          },
+        });
+      }
     }
-    for (const [i, ed] of parsed.education.entries()) {
-      await tx.education.create({
-        data: {
-          profileId,
-          school: ed.school,
-          degree: ed.degree || null,
-          field: ed.field || null,
-          startDate: ed.startDate || null,
-          endDate: ed.endDate || null,
-          gpa: ed.gpa || null,
-          order: i,
-        },
-      });
+    if (parsed.education.length) {
+      await tx.education.deleteMany({ where: { profileId } });
+      for (const [i, ed] of parsed.education.entries()) {
+        await tx.education.create({
+          data: {
+            profileId,
+            school: ed.school,
+            degree: ed.degree || null,
+            field: ed.field || null,
+            startDate: ed.startDate || null,
+            endDate: ed.endDate || null,
+            gpa: ed.gpa || null,
+            order: i,
+          },
+        });
+      }
     }
-    for (const [i, p] of parsed.projects.entries()) {
-      await tx.project.create({
-        data: {
-          profileId,
-          name: p.name,
-          type: p.type || "Project",
-          company: p.company || null,
-          description: p.description || null,
-          bullets: p.bullets,
-          order: i,
-        },
-      });
+    if (parsed.projects.length) {
+      await tx.project.deleteMany({ where: { profileId } });
+      for (const [i, p] of parsed.projects.entries()) {
+        await tx.project.create({
+          data: {
+            profileId,
+            name: p.name,
+            type: p.type || "Project",
+            company: p.company || null,
+            description: p.description || null,
+            bullets: p.bullets,
+            order: i,
+          },
+        });
+      }
     }
-    const skillRows = parsed.skills.flatMap((s) =>
-      s.items.map((name) => ({ profileId, name, category: s.category || null })),
-    );
-    if (skillRows.length) await tx.skill.createMany({ data: skillRows });
+    if (skillRows.length) {
+      await tx.skill.deleteMany({ where: { profileId } });
+      await tx.skill.createMany({ data: skillRows });
+    }
 
     if (rawTextForBase) {
       await tx.baseResume.upsert({

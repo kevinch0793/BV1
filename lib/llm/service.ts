@@ -23,8 +23,10 @@ export function asStringArray(v: unknown): string[] {
 
 const PARSE_SYSTEM = [
   "You parse a candidate's resume into structured profile data. Extract faithfully — never invent employers, dates, degrees, or metrics. Keep bullet wording close to the source.",
-  "Completeness is critical: extract EVERY work-experience entry as its own object — one per role/company — in reverse-chronological order. Do not merge multiple roles into one, do not summarize the list, and never drop earlier or older positions. If the same company appears with multiple titles, output one entry per title. Apply the same rule to education and projects.",
-  "For each project, infer a short category for its 'type' (e.g. 'Web app', 'ML model', 'Internal platform'). Leave any field empty when the resume doesn't provide it.",
+  "Completeness is critical: extract EVERY work-experience entry as its own object — one per role/company — in reverse-chronological order. Do not merge multiple roles into one, do not summarize the list, and never drop earlier or older positions. If the same company appears with multiple titles, output one entry per title. Apply the same completeness rule to education and projects.",
+  "'experiences' = paid employment / jobs at companies. Keep every job in experiences.",
+  "'projects' = notable NAMED initiatives, products, systems, models, platforms, libraries, or side/personal projects the candidate built or worked on. These may appear under a Projects heading OR be named inside the summary or a job's bullet points (e.g. a named model 'GEM', a platform 'MetaMate', a service 'Andromeda'). Extract EVERY such named project as its own 'projects' entry with a short inferred 'type' (e.g. 'Ads foundation model', 'Internal platform', 'Library') and set its 'company' to the employer it was built at when known. Do this even when the project is only mentioned within a job description — the job still stays in experiences, and the named system ALSO appears in projects. Only leave 'projects' empty if the resume names no such initiatives at all.",
+  "Leave any field empty when the resume doesn't provide it.",
 ].join(" ");
 
 const PARSE_INSTRUCTION =
