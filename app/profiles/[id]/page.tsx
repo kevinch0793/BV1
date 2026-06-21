@@ -18,8 +18,6 @@ import {
   setSkills,
   saveBaseResume,
 } from "@/app/actions/profiles";
-import { deleteJob } from "@/app/actions/jobs";
-import { JobAdder } from "./JobAdder";
 import { ResumeParser } from "./ResumeParser";
 import { CollapsibleItem } from "@/components/CollapsibleItem";
 import { DirtyForm } from "@/components/DirtyForm";
@@ -50,12 +48,20 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
           <h1 className="text-2xl font-semibold text-neutral-900">{profile.fullName}</h1>
           <p className="text-sm text-neutral-500">{profile.label}</p>
         </div>
-        <Link
-          href={`/tailor/${profile.id}`}
-          className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800"
-        >
-          Tailor a resume →
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/tailor/${profile.id}`}
+            className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+          >
+            Tailor manually
+          </Link>
+          <Link
+            href={`/profiles/${profile.id}/dashboard`}
+            className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800"
+          >
+            Tailoring dashboard →
+          </Link>
+        </div>
       </div>
 
       {/* Parse an existing resume to auto-fill everything below */}
@@ -228,31 +234,19 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
         </DirtyForm>
       </Card>
 
-      {/* Jobs */}
-      <Card title="Saved jobs" subtitle="Add a job URL (auto-scraped) or paste the description.">
-        <JobAdder profileId={profile.id} />
-        {profile.jobs.length === 0 ? (
-          <Empty>No jobs saved yet.</Empty>
-        ) : (
-          <ul className="mt-4 divide-y divide-neutral-200 rounded-lg border border-neutral-200">
-            {profile.jobs.map((j) => (
-              <li key={j.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                <div>
-                  <span className="font-medium text-neutral-900">{j.role || "Role?"}</span>
-                  <span className="text-neutral-500"> · {j.company || "Company?"}{j.location ? ` · ${j.location}` : ""}</span>
-                  {j.url && (
-                    <a href={j.url} target="_blank" rel="noreferrer" className="ml-2 text-xs text-sky-700 hover:underline">
-                      link
-                    </a>
-                  )}
-                </div>
-                <form action={deleteJob.bind(null, j.id, profile.id)}>
-                  <button className="text-xs text-red-600 hover:underline">Remove</button>
-                </form>
-              </li>
-            ))}
-          </ul>
-        )}
+      {/* Jobs + tailoring — managed on the dashboard */}
+      <Card title="Jobs & tailoring" subtitle="Add job URLs, fetch JDs, and auto-tailor a resume for each — in a queue.">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-neutral-500">
+            {profile.jobs.length} job{profile.jobs.length === 1 ? "" : "s"} saved
+          </span>
+          <Link
+            href={`/profiles/${profile.id}/dashboard`}
+            className="rounded-md bg-sky-700 px-3 py-2 text-sm font-medium text-white hover:bg-sky-800"
+          >
+            Open dashboard →
+          </Link>
+        </div>
       </Card>
 
       <Card title="Danger zone">

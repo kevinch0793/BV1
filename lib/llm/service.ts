@@ -1,5 +1,4 @@
-import { generateStructured } from "@/lib/llm/anthropic";
-import { generateStructuredOpenAI } from "@/lib/llm/openai";
+import { generateStructuredOpenAI, OPENAI_TAILOR_MODEL } from "@/lib/llm/openai";
 import {
   JobFieldsSchema,
   ParsedProfileSchema,
@@ -81,11 +80,12 @@ export async function tailorResume(args: {
           instructions: args.instructions,
         });
 
-  return generateStructured({
+  return generateStructuredOpenAI({
     schema: ResumeContentSchema,
+    schemaName: "resume",
     system: built.system,
     prompt: built.prompt,
-    model: args.model,
-    maxTokens: 16000,
+    model: args.model ?? OPENAI_TAILOR_MODEL,
+    maxTokens: 8000,
   });
 }

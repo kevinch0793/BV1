@@ -88,3 +88,70 @@ export async function deleteTailored(id: string) {
   await prisma.tailoredResume.delete({ where: { id } });
   revalidatePath("/");
 }
+
+export type AutoTailorResult = { ok: boolean; error?: string; tailoredId?: string };
+
+/**
+ * Pipeline step: generate + save a tailored resume for one already-fetched job.
+ * Mode is chosen automatically (base resume if present, else from-scratch).
+ * Replaces any prior tailored resume for that job so there's one per job.
+ */
+export async function autoTailorJob(
+  jobId: string,
+  opts?: { templateId?: string; model?: string; instructions?: string },
+): Promise<AutoTailorResult> {
+  const job = await prisma.jobPosting.findUnique({ where: { id: jobId } });
+  if (!job) return { ok: false, error: "Job not found." };
+  if (job.status !== "fetched") return { ok: false, error: "Job description not fetched yet." };
+
+  const profile = await prisma.profile.findUnique({
+    where: { id: job.profileId },
+    include: profileInclude,
+  });
+  if (!profile) return { ok: false, error: "Profile not found." };
+
+  const mode: "with_base" | "from_scratch" = profile.baseResume ? "with_base" : "from_scratch";
+  if (mode === "from_scratch" && profile.projects.length === 0) {
+    return { ok: false, error: "Needs a base resume or at least one project to tailor." };
+  }
+
+  const parsed = (job.descriptionParsed as { description?: string; requirements?: string[] }) ?? {};
+  const jobFields: JobForLLM = {
+    company: job.company,
+    role: job.role,
+    location: job.location,
+    description: parsed.description ?? job.descriptionRaw ?? "",
+    requirements: parsed.requirements ?? [],
+  };
+
+  let content: ResumeContent;
+  try {
+    content = await tailorResume({
+      mode,
+      profile: toProfileForLLM(profile),
+      job: jobFields,
+      baseResume: profile.baseResume?.rawText,
+      instructions: opts?.instructions,
+      model: opts?.model,
+    });
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+
+  const saved = await prisma.$transaction(async (tx) => {
+    await tx.tailoredResume.deleteMany({ where: { jobPostingId: jobId } });
+    return tx.tailoredResume.create({
+      data: {
+        profileId: job.profileId,
+        jobPostingId: jobId,
+        templateId: opts?.templateId ?? "classic",
+        mode,
+        instructions: opts?.instructions || null,
+        content,
+      },
+    });
+  });
+
+  revalidatePath(`/profiles/${job.profileId}/dashboard`);
+  return { ok: true, tailoredId: saved.id };
+}

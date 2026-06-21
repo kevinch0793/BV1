@@ -11,7 +11,7 @@ export default async function TailorPage({ params }: { params: Promise<{ profile
     where: { id: profileId },
     include: {
       baseResume: true,
-      jobs: { orderBy: { createdAt: "desc" } },
+      jobs: { where: { status: "fetched" }, orderBy: { createdAt: "desc" } },
       _count: { select: { projects: true } },
     },
   });

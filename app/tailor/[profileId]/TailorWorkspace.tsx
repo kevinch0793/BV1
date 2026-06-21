@@ -6,8 +6,8 @@ import { ResumePreview, TEMPLATES, type TemplateId } from "@/components/template
 import { generateTailored, saveTailored } from "@/app/actions/tailor";
 
 const MODELS = [
-  { id: "claude-sonnet-4-6", label: "Sonnet 4.6 (fast, default)" },
-  { id: "claude-opus-4-8", label: "Opus 4.8 (highest quality)" },
+  { id: "gpt-4o-mini", label: "GPT-4o mini (fast, default)" },
+  { id: "gpt-4o", label: "GPT-4o (higher quality)" },
 ];
 
 const input =

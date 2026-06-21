@@ -17,6 +17,7 @@ function getClient(): OpenAI {
 }
 
 export const OPENAI_EXTRACT_MODEL = process.env.OPENAI_EXTRACT_MODEL ?? "gpt-4o-mini";
+export const OPENAI_TAILOR_MODEL = process.env.OPENAI_TAILOR_MODEL ?? "gpt-4o-mini";
 
 /**
  * Structured-output completion via OpenAI. Forces the model to return JSON

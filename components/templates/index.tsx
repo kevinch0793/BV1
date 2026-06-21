@@ -13,10 +13,10 @@ function ContactLine({ c }: { c: ResumeContent["contact"] }) {
   return (
     <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[12px]">
       {parts.map((p, i) => (
-        <span key={i}>{p}</span>
+        <span key={`p-${i}`}>{p}</span>
       ))}
-      {c.links.map((l) => (
-        <a key={l.url} href={l.url} className="text-current underline">
+      {c.links.map((l, i) => (
+        <a key={`link-${i}`} href={l.url} className="text-current underline">
           {l.label}
         </a>
       ))}
@@ -116,8 +116,8 @@ function Modern({ r }: { r: ResumeContent }) {
         {r.title && <p className="text-sm font-medium text-sky-800">{r.title}</p>}
         <div className="mt-1 text-left">
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[12px] text-neutral-600">
-            {[r.contact.email, r.contact.phone, r.contact.location].filter(Boolean).map((p, i) => <span key={i}>{p}</span>)}
-            {r.contact.links.map((l) => <a key={l.url} href={l.url} className="text-sky-700 underline">{l.label}</a>)}
+            {[r.contact.email, r.contact.phone, r.contact.location].filter(Boolean).map((p, i) => <span key={`p-${i}`}>{p}</span>)}
+            {r.contact.links.map((l, i) => <a key={`link-${i}`} href={l.url} className="text-sky-700 underline">{l.label}</a>)}
           </div>
         </div>
       </header>
@@ -179,7 +179,7 @@ function Compact({ r }: { r: ResumeContent }) {
         <h1 className="text-xl font-bold text-neutral-900">{r.name}{r.title && <span className="ml-2 text-sm font-normal text-neutral-600">{r.title}</span>}</h1>
         <div className="text-[11px] text-neutral-600">
           {[r.contact.email, r.contact.phone, r.contact.location].filter(Boolean).join(" · ")}
-          {r.contact.links.map((l) => <a key={l.url} href={l.url} className="ml-2 underline">{l.label}</a>)}
+          {r.contact.links.map((l, i) => <a key={`link-${i}`} href={l.url} className="ml-2 underline">{l.label}</a>)}
         </div>
       </header>
       {r.summary && <Section title="Summary"><p>{r.summary}</p></Section>}

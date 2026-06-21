@@ -100,7 +100,8 @@ model JobPosting {
   location          String?
   descriptionRaw    String?
   descriptionParsed Json? // { description, requirements[] }
-  status            String   @default("saved") // saved | applied | archived
+  status            String   @default("pending") // pending | fetched | failed
+  error             String? // last fetch error, when status = failed
   createdAt         DateTime @default(now())
 
   tailored TailoredResume[]

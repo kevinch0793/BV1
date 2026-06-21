@@ -68,7 +68,8 @@ export default async function Dashboard() {
                     {t.job?.company ? ` · ${t.job.company}` : ""}
                   </span>
                   <span className="ml-2 text-neutral-500">
-                    {t.profile.label} · {t.mode === "with_base" ? "from base" : "from scratch"} · {t.templateId}
+                    {t.profile?.label ? `${t.profile.label} · ` : ""}
+                    {t.mode === "with_base" ? "from base" : "from scratch"} · {t.templateId}
                   </span>
                 </div>
                 <Link href={`/profiles/${t.profileId}`} className="text-sky-700 hover:underline">
