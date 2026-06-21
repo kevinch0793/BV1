@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TEMPLATES, type TemplateId } from "@/components/templates";
-import { addJobUrls, fetchJob, setJobFromText, deleteJob } from "@/app/actions/jobs";
-import { autoTailorJob } from "@/app/actions/tailor";
+import { addJobUrls, setJobFromText, deleteJob } from "@/app/actions/jobs";
+import { startPipeline, pipelineRunning, retryJob } from "@/app/actions/pipeline";
 
 type Job = {
   id: string;
@@ -26,24 +26,18 @@ const MODELS = [
 const input =
   "w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500";
 
-// Live overlay (in-flight / just-finished states from the running queue).
-type Live = "fetching" | "fetch_failed" | "tailoring" | "tailored" | "tailor_failed";
-
 const STAGE: Record<string, { label: string; style: string }> = {
   pending: { label: "Not fetched", style: "bg-neutral-100 text-neutral-600" },
   fetching: { label: "Fetching…", style: "bg-sky-100 text-sky-700" },
   fetched: { label: "Fetched", style: "bg-amber-100 text-amber-700" },
   tailoring: { label: "Tailoring…", style: "bg-violet-100 text-violet-700" },
   tailored: { label: "Tailored", style: "bg-emerald-100 text-emerald-700" },
-  fetch_failed: { label: "Fetch failed", style: "bg-red-100 text-red-700" },
-  tailor_failed: { label: "Tailor failed", style: "bg-red-100 text-red-700" },
+  failed: { label: "Failed", style: "bg-red-100 text-red-700" },
 };
 
-function stageKey(job: Job, live?: Live): keyof typeof STAGE {
-  if (live) return live;
+function stageKey(job: Job): keyof typeof STAGE {
   if (job.tailoredId) return "tailored";
-  if (job.status === "failed") return "fetch_failed";
-  if (job.status === "fetched") return "fetched";
+  if (["fetching", "tailoring", "fetched", "failed"].includes(job.status)) return job.status;
   return "pending";
 }
 
@@ -57,57 +51,57 @@ export function PipelineDashboard({
   canTailor: boolean;
 }) {
   const router = useRouter();
-  const [live, setLive] = useState<Record<string, Live>>({});
-  const [liveErr, setLiveErr] = useState<Record<string, string>>({});
-  const [running, setRunning] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [polling, setPolling] = useState(false);
   const [adding, startAdd] = useTransition();
   const [addMsg, setAddMsg] = useState<string | null>(null);
 
   const [template, setTemplate] = useState<TemplateId>("classic");
   const [model, setModel] = useState(MODELS[0].id);
   const [instructions, setInstructions] = useState("");
+  const opts = { templateId: template, model, instructions };
 
-  const stageOf = (j: Job) => stageKey(j, live[j.id]);
-  const outstanding = jobs.filter((j) => !["tailored", "fetching", "tailoring"].includes(stageOf(j)));
+  const outstanding = jobs.filter((j) => ["pending", "fetched"].includes(stageKey(j)));
 
-  async function run(targets: Job[]) {
-    if (!targets.length) return;
-    setRunning(true);
-    setProgress({ done: 0, total: targets.length });
-    for (let i = 0; i < targets.length; i++) {
-      const j = targets[i];
-      if (j.status !== "fetched") {
-        setLive((s) => ({ ...s, [j.id]: "fetching" }));
-        const r = await fetchJob(j.id);
-        if (!r.ok) {
-          setLive((s) => ({ ...s, [j.id]: "fetch_failed" }));
-          setLiveErr((e) => ({ ...e, [j.id]: r.error ?? "Fetch failed" }));
-          setProgress({ done: i + 1, total: targets.length });
-          continue;
-        }
+  // Resume the progress view if the pipeline is already running server-side
+  // (e.g. after navigating back to this page).
+  useEffect(() => {
+    pipelineRunning(profileId).then((r) => {
+      if (r) setPolling(true);
+    });
+  }, [profileId]);
+
+  // While polling, refresh the table and stop once the server reports idle.
+  useEffect(() => {
+    if (!polling) return;
+    let active = true;
+    const id = setInterval(async () => {
+      router.refresh();
+      const still = await pipelineRunning(profileId);
+      if (active && !still) {
+        setPolling(false);
+        router.refresh();
       }
-      if (canTailor && !j.tailoredId) {
-        setLive((s) => ({ ...s, [j.id]: "tailoring" }));
-        const t = await autoTailorJob(j.id, { templateId: template, model, instructions });
-        if (t.ok) setLive((s) => ({ ...s, [j.id]: "tailored" }));
-        else {
-          setLive((s) => ({ ...s, [j.id]: "tailor_failed" }));
-          setLiveErr((e) => ({ ...e, [j.id]: t.error ?? "Tailor failed" }));
-        }
-      }
-      setProgress({ done: i + 1, total: targets.length });
-    }
-    setRunning(false);
+    }, 2500);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [polling, profileId, router]);
+
+  async function kick() {
+    await startPipeline(profileId, opts);
+    setPolling(true);
     router.refresh();
   }
 
   return (
     <div className="space-y-6">
-      {/* Add URLs */}
+      {/* Add URLs (auto-runs the pipeline) */}
       <section className="rounded-xl border border-neutral-200 bg-white p-5">
-        <h2 className="text-lg font-semibold text-neutral-900">1 · Add job URLs</h2>
-        <p className="mb-3 text-xs text-neutral-500">One URL per line.</p>
+        <h2 className="text-lg font-semibold text-neutral-900">Add job URLs</h2>
+        <p className="mb-3 text-xs text-neutral-500">
+          One URL per line. On add, each is fetched and tailored automatically — it keeps running in the background even if you leave this page.
+        </p>
         <form
           action={(fd) => {
             setAddMsg(null);
@@ -117,40 +111,36 @@ export function PipelineDashboard({
                 setAddMsg(r.error ?? "Failed");
                 return;
               }
-              setAddMsg(r.added ? `Added ${r.added} — fetching & tailoring…` : "No new URLs.");
-              router.refresh();
-              // Auto-run the full pipeline on the newly added jobs.
-              await run(
-                r.created.map((c) => ({
-                  id: c.id,
-                  url: c.url,
-                  company: null,
-                  role: null,
-                  location: null,
-                  status: "pending",
-                  error: null,
-                  tailoredId: null,
-                })),
-              );
               setAddMsg(r.added ? `Added ${r.added}.` : "No new URLs.");
+              await kick();
             });
           }}
           className="space-y-2"
         >
           <textarea name="urls" rows={3} className={input} placeholder={"https://…/job/1\nhttps://…/job/2"} />
-          <div className="flex items-center gap-3">
-            <button disabled={adding} className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50">
-              {adding ? "Adding…" : "Add URLs"}
+          <div className="flex flex-wrap items-center gap-3">
+            <button disabled={adding} className="rounded-md bg-sky-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-800 disabled:opacity-50">
+              {adding ? "Adding…" : "Add & run"}
             </button>
-            {addMsg && <span className="text-sm text-neutral-500">{addMsg}</span>}
+            <button
+              type="button"
+              onClick={kick}
+              disabled={outstanding.length === 0}
+              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-50"
+            >
+              Run pipeline ({outstanding.length})
+            </button>
+            {polling && (
+              <span className="inline-flex items-center gap-2 text-sm text-sky-700">
+                <Spinner /> Working in background…
+              </span>
+            )}
+            {addMsg && !polling && <span className="text-sm text-neutral-500">{addMsg}</span>}
           </div>
         </form>
-      </section>
 
-      {/* Settings + run */}
-      <section className="rounded-xl border border-neutral-200 bg-white p-5">
-        <h2 className="text-lg font-semibold text-neutral-900">2 · Fetch &amp; tailor</h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        {/* Settings */}
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <label className="flex flex-col gap-1 text-xs font-medium text-neutral-600">
             Template
             <select value={template} onChange={(e) => setTemplate(e.target.value as TemplateId)} className={input}>
@@ -168,19 +158,9 @@ export function PipelineDashboard({
             <input value={instructions} onChange={(e) => setInstructions(e.target.value)} className={input} placeholder="e.g. one page, emphasize leadership" />
           </label>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => run(outstanding)}
-            disabled={running || outstanding.length === 0}
-            className="inline-flex items-center gap-2 rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800 disabled:opacity-50"
-          >
-            {running && <Spinner />}
-            {running
-              ? `Processing ${progress?.done ?? 0}/${progress?.total ?? 0}…`
-              : `Run pipeline (${outstanding.length} outstanding)`}
-          </button>
-          <span className="text-sm text-neutral-500">Fetches each JD, then tailors a resume — one job at a time.</span>
-        </div>
+        {!canTailor && (
+          <p className="mt-3 text-xs text-amber-600">Tailoring needs a base resume or a project on the profile — until then jobs will only be fetched.</p>
+        )}
       </section>
 
       {/* Job table */}
@@ -206,11 +186,9 @@ export function PipelineDashboard({
                   <JobRow
                     key={j.id}
                     job={j}
-                    stage={stageOf(j)}
-                    error={liveErr[j.id] ?? j.error ?? ""}
-                    running={running}
-                    onRun={(job) => run([job])}
                     onRemove={(id) => deleteJob(id, profileId).then(() => router.refresh())}
+                    onRetry={(id) => retryJob(id).then(kick)}
+                    onPasted={kick}
                   />
                 ))}
               </tbody>
@@ -218,38 +196,29 @@ export function PipelineDashboard({
           </div>
         )}
       </section>
-
-      {!canTailor && jobs.length > 0 && (
-        <p className="text-xs text-neutral-400">Tailoring is disabled until the profile has a base resume or a project — fetching still works.</p>
-      )}
     </div>
   );
 }
 
 function JobRow({
   job,
-  stage,
-  error,
-  running,
-  onRun,
   onRemove,
+  onRetry,
+  onPasted,
 }: {
   job: Job;
-  stage: keyof typeof STAGE;
-  error: string;
-  running: boolean;
-  onRun: (job: Job) => void;
   onRemove: (id: string) => void;
+  onRetry: (id: string) => void;
+  onPasted: () => void;
 }) {
   const [showPaste, setShowPaste] = useState(false);
   const [pending, start] = useTransition();
   const [pasteErr, setPasteErr] = useState<string | null>(null);
 
+  const stage = stageKey(job);
   const st = STAGE[stage];
   const busy = stage === "fetching" || stage === "tailoring";
-  const canPaste = stage === "pending" || stage === "fetch_failed";
-  const isFailed = stage === "fetch_failed" || stage === "tailor_failed";
-  const runLabel = stage === "fetched" ? "Tailor" : "Run";
+  const canPaste = stage === "pending" || stage === "failed";
 
   return (
     <>
@@ -262,7 +231,7 @@ function JobRow({
         </td>
         <td className="px-4 py-3 font-medium text-neutral-900">
           {job.role || <span className="text-neutral-400">—</span>}
-          {isFailed && error && <p className="mt-0.5 text-xs font-normal text-red-600">{error}</p>}
+          {stage === "failed" && job.error && <p className="mt-0.5 text-xs font-normal text-red-600">{job.error}</p>}
         </td>
         <td className="px-4 py-3 text-neutral-700">{job.company || <span className="text-neutral-400">—</span>}</td>
         <td className="px-4 py-3 text-neutral-700">{job.location || <span className="text-neutral-400">—</span>}</td>
@@ -278,10 +247,8 @@ function JobRow({
             {job.tailoredId && (
               <Link href={`/resume/${job.tailoredId}`} className="font-medium text-sky-700 hover:underline">Resume</Link>
             )}
-            {!busy && stage !== "tailored" && (
-              <button onClick={() => onRun(job)} disabled={running} className="text-sky-700 hover:underline disabled:opacity-50">
-                {runLabel}
-              </button>
+            {stage === "failed" && job.url && (
+              <button onClick={() => onRetry(job.id)} className="text-sky-700 hover:underline">Retry</button>
             )}
             {canPaste && (
               <button onClick={() => setShowPaste((v) => !v)} className="text-neutral-600 hover:underline">
@@ -302,8 +269,7 @@ function JobRow({
                   const r = await setJobFromText(job.id, fd);
                   if (r.ok) {
                     setShowPaste(false);
-                    // JD is now saved/fetched — auto-tailor it (skip the fetch step).
-                    onRun({ ...job, status: "fetched", tailoredId: null });
+                    onPasted(); // kicks the background pipeline → auto-tailors this job
                   } else {
                     setPasteErr(r.error ?? "Failed");
                   }
