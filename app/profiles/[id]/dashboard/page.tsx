@@ -12,16 +12,16 @@ export default async function ProfileDashboard({ params }: { params: Promise<{ i
     include: {
       baseResume: { select: { id: true } },
       jobs: { orderBy: { createdAt: "desc" } },
-      tailored: { select: { id: true, jobPostingId: true } },
-      _count: { select: { projects: true } },
+      tailored: { select: { id: true, jobPostingId: true, fitAfter: true } },
+      _count: { select: { experiences: true } },
     },
   });
   if (!profile) notFound();
 
-  const tailoredByJob = new Map<string, string>();
-  for (const t of profile.tailored) if (t.jobPostingId) tailoredByJob.set(t.jobPostingId, t.id);
+  const tailoredByJob = new Map<string, { id: string; fitAfter: number | null }>();
+  for (const t of profile.tailored) if (t.jobPostingId) tailoredByJob.set(t.jobPostingId, { id: t.id, fitAfter: t.fitAfter });
 
-  const canTailor = !!profile.baseResume || profile._count.projects > 0;
+  const canTailor = !!profile.baseResume || profile._count.experiences > 0;
 
   const jobs = profile.jobs.map((j) => ({
     id: j.id,
@@ -31,7 +31,8 @@ export default async function ProfileDashboard({ params }: { params: Promise<{ i
     location: j.location,
     status: j.status,
     error: j.error,
-    tailoredId: tailoredByJob.get(j.id) ?? null,
+    tailoredId: tailoredByJob.get(j.id)?.id ?? null,
+    fitAfter: tailoredByJob.get(j.id)?.fitAfter ?? null,
   }));
 
   return (

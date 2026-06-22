@@ -1,18 +1,30 @@
 import { Prisma } from "@/lib/generated/prisma/client";
 import { asStringArray } from "@/lib/llm/service";
-import type { ProfileForLLM } from "@/lib/llm/prompts";
+import type { ProfileForLLM, ProjectGroup } from "@/lib/llm/prompts";
 
 // Standard include used everywhere we load a "full" profile.
 export const profileInclude = {
   experiences: { orderBy: { order: "asc" } },
   education: { orderBy: { order: "asc" } },
-  projects: { orderBy: { order: "asc" } },
   skills: true,
   baseResume: true,
   jobs: { orderBy: { createdAt: "desc" } },
 } satisfies Prisma.ProfileInclude;
 
 export type FullProfile = Prisma.ProfileGetPayload<{ include: typeof profileInclude }>;
+
+/** Parse an Experience.projects JSON column into project subgroups. */
+export function asProjectGroups(v: unknown): ProjectGroup[] {
+  if (!Array.isArray(v)) return [];
+  return v.map((g) => {
+    const o = (g ?? {}) as Record<string, unknown>;
+    return {
+      name: typeof o.name === "string" ? o.name : "",
+      type: typeof o.type === "string" ? o.type : "",
+      bullets: asStringArray(o.bullets),
+    };
+  });
+}
 
 export function asLinks(v: unknown): Record<string, string> {
   if (v && typeof v === "object" && !Array.isArray(v)) {
@@ -41,7 +53,7 @@ export function toProfileForLLM(p: FullProfile): ProfileForLLM {
       startDate: e.startDate,
       endDate: e.endDate,
       current: e.current,
-      bullets: asStringArray(e.bullets),
+      projects: asProjectGroups(e.projects),
     })),
     education: p.education.map((ed) => ({
       school: ed.school,
@@ -50,13 +62,6 @@ export function toProfileForLLM(p: FullProfile): ProfileForLLM {
       startDate: ed.startDate,
       endDate: ed.endDate,
       gpa: ed.gpa,
-    })),
-    projects: p.projects.map((pr) => ({
-      name: pr.name,
-      type: pr.type,
-      company: pr.company,
-      description: pr.description,
-      bullets: asStringArray(pr.bullets),
     })),
     skills: p.skills.map((s) => ({ name: s.name, category: s.category })),
   };

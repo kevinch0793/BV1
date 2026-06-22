@@ -4,14 +4,25 @@ import { useState } from "react";
 import { ResumePreview, TEMPLATES, type TemplateId } from "@/components/templates";
 import type { ResumeContent } from "@/lib/llm/schema";
 
+type FitDetail = { matched?: string[]; missing?: string[] };
+
 export function SavedResumeView({
   content,
   templateId,
+  fitBefore,
+  fitAfter,
+  fitDetail,
 }: {
   content: ResumeContent;
   templateId: TemplateId;
+  fitBefore: number | null;
+  fitAfter: number | null;
+  fitDetail: FitDetail | null;
 }) {
   const [template, setTemplate] = useState<TemplateId>(templateId);
+  const hasFit = fitAfter != null;
+  const delta = fitBefore != null && fitAfter != null ? fitAfter - fitBefore : null;
+
   return (
     <div className="space-y-3">
       <div className="no-print flex flex-wrap items-center justify-between gap-3">
@@ -30,11 +41,61 @@ export function SavedResumeView({
           Download PDF
         </button>
       </div>
+
+      {hasFit && (
+        <div className="no-print rounded-xl border border-neutral-200 bg-white p-4">
+          <div className="flex flex-wrap items-center gap-6">
+            <div className="text-sm font-semibold text-neutral-900">ATS match</div>
+            <Stat label="Before" value={fitBefore} muted />
+            <span className="text-neutral-300">→</span>
+            <Stat label="After" value={fitAfter} />
+            {delta != null && (
+              <span className={`rounded px-2 py-0.5 text-sm font-medium ${delta >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                {delta >= 0 ? "+" : ""}{delta} pts
+              </span>
+            )}
+          </div>
+          {fitDetail && (
+            <div className="mt-3 space-y-2 text-xs">
+              {fitDetail.matched && fitDetail.matched.length > 0 && (
+                <ChipRow label="Matched JD skills" chips={fitDetail.matched} tone="bg-emerald-50 text-emerald-700 border-emerald-200" />
+              )}
+              {fitDetail.missing && fitDetail.missing.length > 0 && (
+                <ChipRow label="Still missing" chips={fitDetail.missing} tone="bg-amber-50 text-amber-700 border-amber-200" />
+              )}
+            </div>
+          )}
+          <p className="mt-2 text-[11px] text-neutral-400">
+            Keyword/skill coverage of the JD (must-haves weighted) — an ATS-style match estimate, not a specific employer&apos;s parser.
+          </p>
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         <div className="print-sheet mx-auto">
           <ResumePreview content={content} template={template} />
         </div>
       </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, muted }: { label: string; value: number | null; muted?: boolean }) {
+  return (
+    <div className="flex items-baseline gap-1.5">
+      <span className="text-xs text-neutral-500">{label}</span>
+      <span className={`text-2xl font-bold ${muted ? "text-neutral-400" : "text-sky-700"}`}>{value ?? "—"}%</span>
+    </div>
+  );
+}
+
+function ChipRow({ label, chips, tone }: { label: string; chips: string[]; tone: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-neutral-500">{label}:</span>
+      {chips.map((c, i) => (
+        <span key={i} className={`rounded border px-1.5 py-0.5 ${tone}`}>{c}</span>
+      ))}
     </div>
   );
 }

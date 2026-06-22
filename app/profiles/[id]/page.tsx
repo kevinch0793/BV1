@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { profileInclude, asLinks } from "@/lib/profile-data";
-import { asStringArray } from "@/lib/llm/service";
+import { profileInclude, asLinks, asProjectGroups } from "@/lib/profile-data";
 import {
   updateProfileBasics,
   deleteProfile,
@@ -12,15 +11,13 @@ import {
   addEducation,
   updateEducation,
   deleteEducation,
-  addProject,
-  updateProject,
-  deleteProject,
   setSkills,
   saveBaseResume,
 } from "@/app/actions/profiles";
 import { ResumeParser } from "./ResumeParser";
 import { CollapsibleItem } from "@/components/CollapsibleItem";
 import { DirtyForm } from "@/components/DirtyForm";
+import { ExperienceProjects } from "@/components/ExperienceProjects";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +37,8 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
 
   return (
     <div className="space-y-8">
+      {/* Pinned header — stays visible while editing the sections below */}
+      <div className="sticky top-0 z-10 bg-background pt-2 pb-3 shadow-[0_8px_10px_-10px_rgba(0,0,0,0.25)]">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link href="/profiles" className="text-sm text-sky-700 hover:underline">
@@ -62,6 +61,7 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
             Tailoring dashboard →
           </Link>
         </div>
+      </div>
       </div>
 
       {/* Parse an existing resume to auto-fill everything below */}
@@ -121,53 +121,12 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
               <label className="mt-2 flex items-center gap-2 text-xs text-neutral-600">
                 <input type="checkbox" name="current" defaultChecked={e.current} /> Current role
               </label>
-              <label className={`${labelCls} mt-2`}>
-                Bullets (one per line)
-                <textarea name="bullets" rows={3} defaultValue={asStringArray(e.bullets).join("\n")} className={input} />
-              </label>
+              <div className="mt-3">
+                <ExperienceProjects defaultProjects={asProjectGroups(e.projects)} />
+              </div>
               <div className="mt-2 flex gap-2">
                 <button data-save className={saveBtn}>Save</button>
                 <button formAction={deleteExperience.bind(null, e.id, profile.id)} className={delBtn}>Delete</button>
-              </div>
-            </DirtyForm>
-            </CollapsibleItem>
-          ))}
-        </div>
-      </Card>
-
-      {/* Projects */}
-      <Card
-        title="Projects"
-        subtitle="Name + type are required — these anchor from-scratch generation (e.g. GEM — Ads foundation model)."
-        action={
-          <form action={addProject.bind(null, profile.id)}>
-            <button className={saveBtn}>+ Add</button>
-          </form>
-        }
-      >
-        {profile.projects.length === 0 && <Empty>No projects yet.</Empty>}
-        <div className="space-y-3">
-          {profile.projects.map((p) => (
-            <CollapsibleItem
-              key={p.id}
-              summary={p.name || p.type ? `${p.name || "Project"}${p.type ? ` — ${p.type}` : ""}` : "New project"}
-              meta={p.company ?? undefined}
-              defaultOpen={!p.name && !p.type}
-            >
-            <DirtyForm action={updateProject.bind(null, p.id, profile.id)}>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <label className={labelCls}>Name *<input name="name" defaultValue={p.name} className={input} required /></label>
-                <label className={labelCls}>Type *<input name="type" defaultValue={p.type} placeholder="e.g. Internal platform" className={input} required /></label>
-                <label className={labelCls}>Company<input name="company" defaultValue={p.company ?? ""} className={input} /></label>
-              </div>
-              <label className={`${labelCls} mt-2`}>Description<input name="description" defaultValue={p.description ?? ""} className={input} /></label>
-              <label className={`${labelCls} mt-2`}>
-                Bullets (one per line)
-                <textarea name="bullets" rows={3} defaultValue={asStringArray(p.bullets).join("\n")} className={input} />
-              </label>
-              <div className="mt-2 flex gap-2">
-                <button data-save className={saveBtn}>Save</button>
-                <button formAction={deleteProject.bind(null, p.id, profile.id)} className={delBtn}>Delete</button>
               </div>
             </DirtyForm>
             </CollapsibleItem>

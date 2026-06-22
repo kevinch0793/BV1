@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { findJobDescription } from "@/lib/scrape/fetchHtml";
 import { extractJobFields, tailorResume } from "@/lib/llm/service";
 import { profileInclude, toProfileForLLM } from "@/lib/profile-data";
+import { computeFit, profileToText } from "@/lib/llm/ats";
 import type { JobForLLM } from "@/lib/llm/prompts";
 
 export type PipelineOpts = { templateId?: string; model?: string; instructions?: string };
@@ -20,14 +21,19 @@ export function isPipelineRunning(profileId: string): boolean {
  * Returns immediately; the work continues detached in the server process.
  */
 export async function startPipeline(profileId: string, opts: PipelineOpts): Promise<void> {
-  // Recover anything left mid-flight by a previous interrupted run.
+  // Already running: just refresh options. The running loop re-gathers between
+  // rounds, so any newly-pending (e.g. retried) job gets picked up on its own.
+  // Crucially, do NOT touch in-flight ("fetching"/"tailoring") jobs here, or a
+  // mid-run kick would reset live work.
+  if (running.has(profileId)) {
+    running.set(profileId, opts);
+    return;
+  }
+
+  // Fresh start: recover any states left mid-flight by a previous interrupted run.
   await prisma.jobPosting.updateMany({ where: { profileId, status: "fetching" }, data: { status: "pending" } });
   await prisma.jobPosting.updateMany({ where: { profileId, status: "tailoring" }, data: { status: "fetched" } });
 
-  if (running.has(profileId)) {
-    running.set(profileId, opts); // already running — just update the options
-    return;
-  }
   running.set(profileId, opts);
   void loop(profileId).finally(() => running.delete(profileId));
 }
@@ -38,9 +44,9 @@ const CONCURRENCY = 5;
 async function loop(profileId: string): Promise<void> {
   const profile = await prisma.profile.findUnique({
     where: { id: profileId },
-    include: { baseResume: { select: { id: true } }, _count: { select: { projects: true } } },
+    include: { baseResume: { select: { id: true } }, _count: { select: { experiences: true } } },
   });
-  const canTailor = !!profile && (!!profile.baseResume || profile._count.projects > 0);
+  const canTailor = !!profile && (!!profile.baseResume || profile._count.experiences > 0);
 
   // Re-gather between rounds so URLs/pastes added mid-run get picked up. Each
   // round runs its jobs concurrently. Failures move jobs to "failed", so they
@@ -126,7 +132,7 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
   if (!profile) return false;
 
   const mode: "with_base" | "from_scratch" = profile.baseResume ? "with_base" : "from_scratch";
-  if (mode === "from_scratch" && profile.projects.length === 0) return false;
+  if (mode === "from_scratch" && profile.experiences.length === 0) return false;
 
   await prisma.jobPosting.update({ where: { id: jobId }, data: { status: "tailoring" } });
   const parsed = (job.descriptionParsed as { description?: string; requirements?: string[] }) ?? {};
@@ -139,14 +145,17 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
   };
 
   try {
+    const profileForLLM = toProfileForLLM(profile);
     const content = await tailorResume({
       mode,
-      profile: toProfileForLLM(profile),
+      profile: profileForLLM,
       job: jobFields,
       baseResume: profile.baseResume?.rawText,
       instructions: opts.instructions,
       model: opts.model,
     });
+    const beforeText = profile.baseResume?.rawText || profileToText(profileForLLM);
+    const fit = await computeFit(jobFields, beforeText, content);
     await prisma.$transaction(async (tx) => {
       await tx.tailoredResume.deleteMany({ where: { jobPostingId: jobId } });
       await tx.tailoredResume.create({
@@ -157,6 +166,9 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
           mode,
           instructions: opts.instructions || null,
           content,
+          fitBefore: fit.fitBefore,
+          fitAfter: fit.fitAfter,
+          fitDetail: fit.fitDetail as object,
         },
       });
       await tx.jobPosting.update({ where: { id: jobId }, data: { status: "fetched", error: null } });

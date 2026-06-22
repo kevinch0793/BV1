@@ -27,7 +27,15 @@ export default async function ResumeViewer({ params }: { params: Promise<{ tailo
           </span>
         )}
       </div>
-      <SavedResumeView content={t.content as ResumeContent} templateId={t.templateId as TemplateId} />
+      <SavedResumeView
+        content={t.content as ResumeContent}
+        templateId={t.templateId as TemplateId}
+        fitBefore={t.fitBefore}
+        fitAfter={t.fitAfter}
+        fitDetail={t.fitDetail as FitDetail | null}
+      />
     </div>
   );
 }
+
+type FitDetail = { matched?: string[]; missing?: string[] };

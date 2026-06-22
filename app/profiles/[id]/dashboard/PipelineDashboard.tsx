@@ -16,6 +16,7 @@ type Job = {
   status: string;
   error: string | null;
   tailoredId: string | null;
+  fitAfter: number | null;
 };
 
 const MODELS = [
@@ -244,6 +245,11 @@ function JobRow({
         </td>
         <td className="px-4 py-3">
           <div className="flex items-center justify-end gap-3">
+            {job.fitAfter != null && (
+              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700" title="ATS match after tailoring">
+                {job.fitAfter}%
+              </span>
+            )}
             {job.tailoredId && (
               <Link href={`/resume/${job.tailoredId}`} className="font-medium text-sky-700 hover:underline">Resume</Link>
             )}

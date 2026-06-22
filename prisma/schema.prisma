@@ -25,7 +25,6 @@ model Profile {
 
   experiences Experience[]
   education   Education[]
-  projects    Project[]
   skills      Skill[]
   baseResume  BaseResume?
   jobs        JobPosting[]
@@ -42,7 +41,7 @@ model Experience {
   startDate String?
   endDate   String?
   current   Boolean  @default(false)
-  bullets   Json? // string[]
+  projects  Json? // [{ name, type, bullets: string[] }] — per-company subgroups (theme)
   order     Int      @default(0)
 }
 
@@ -57,19 +56,6 @@ model Education {
   endDate   String?
   gpa       String?
   order     Int     @default(0)
-}
-
-/// Required for from-scratch tailoring: name + type drive generation.
-model Project {
-  id          String  @id @default(cuid())
-  profileId   String
-  profile     Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  name        String
-  type        String // e.g. "Ads foundation model", "Internal platform"
-  company     String?
-  description String?
-  bullets     Json? // string[]
-  order       Int     @default(0)
 }
 
 model Skill {
@@ -113,10 +99,15 @@ model TailoredResume {
   profileId    String
   profile      Profile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
   jobPostingId String?
-  job          JobPosting? @relation(fields: [jobPostingId], references: [id], onDelete: SetNull)
+  // Removing a job removes its tailored resume too, so it stops counting in
+  // totals and never lingers in history. Manual resumes (no job) are unaffected.
+  job          JobPosting? @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
   templateId   String      @default("classic")
   mode         String // with_base | from_scratch
   instructions String?
   content      Json // ResumeContent
+  fitBefore    Int? // ATS keyword-coverage % of the base resume (before tailoring)
+  fitAfter     Int? // ATS keyword-coverage % of this tailored resume
+  fitDetail    Json? // { jdSkills:{mustHave,preferred}, matched:[], missing:[] }
   createdAt    DateTime    @default(now())
 }

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { profileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { tailorResume } from "@/lib/llm/service";
+import { computeFit, profileToText } from "@/lib/llm/ats";
 import type { ResumeContent } from "@/lib/llm/schema";
 import type { JobForLLM } from "@/lib/llm/prompts";
 
@@ -39,7 +40,7 @@ export async function generateTailored(args: {
     }
   }
 
-  if (args.mode === "from_scratch" && profile.projects.length === 0) {
+  if (args.mode === "from_scratch" && profile.experiences.length === 0) {
     return {
       ok: false,
       error: "From-scratch mode needs at least one project (name + type) on the profile.",
@@ -111,7 +112,7 @@ export async function autoTailorJob(
   if (!profile) return { ok: false, error: "Profile not found." };
 
   const mode: "with_base" | "from_scratch" = profile.baseResume ? "with_base" : "from_scratch";
-  if (mode === "from_scratch" && profile.projects.length === 0) {
+  if (mode === "from_scratch" && profile.experiences.length === 0) {
     return { ok: false, error: "Needs a base resume or at least one project to tailor." };
   }
 
@@ -124,11 +125,12 @@ export async function autoTailorJob(
     requirements: parsed.requirements ?? [],
   };
 
+  const profileForLLM = toProfileForLLM(profile);
   let content: ResumeContent;
   try {
     content = await tailorResume({
       mode,
-      profile: toProfileForLLM(profile),
+      profile: profileForLLM,
       job: jobFields,
       baseResume: profile.baseResume?.rawText,
       instructions: opts?.instructions,
@@ -137,6 +139,9 @@ export async function autoTailorJob(
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
+
+  const beforeText = profile.baseResume?.rawText || profileToText(profileForLLM);
+  const fit = await computeFit(jobFields, beforeText, content);
 
   const saved = await prisma.$transaction(async (tx) => {
     await tx.tailoredResume.deleteMany({ where: { jobPostingId: jobId } });
@@ -148,6 +153,9 @@ export async function autoTailorJob(
         mode,
         instructions: opts?.instructions || null,
         content,
+        fitBefore: fit.fitBefore,
+        fitAfter: fit.fitAfter,
+        fitDetail: fit.fitDetail as object,
       },
     });
   });

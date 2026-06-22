@@ -10,6 +10,13 @@ export const LinkSchema = z.object({
   url: z.string(),
 });
 
+// A project subgroup within one company's experience (the theme of work there).
+const ProjectGroupSchema = z.object({
+  name: z.string().describe("Official project name; empty if the company has a single unnamed group"),
+  type: z.string().describe("Kind of project, e.g. Ads foundation model, Internal platform"),
+  bullets: z.array(z.string()).describe("Achievement-oriented, JD-aligned"),
+});
+
 export const ResumeContentSchema = z.object({
   name: z.string(),
   title: z.string().describe("Target role / headline, tailored to the JD"),
@@ -33,15 +40,8 @@ export const ResumeContentSchema = z.object({
       location: z.string(),
       startDate: z.string().describe("e.g. Jan 2021"),
       endDate: z.string().describe("e.g. Present"),
-      bullets: z.array(z.string()).describe("Achievement-oriented, JD-aligned"),
-    }),
-  ),
-  projects: z.array(
-    z.object({
-      name: z.string(),
-      type: z.string().describe("e.g. Ads foundation model, Internal platform"),
-      company: z.string(),
-      bullets: z.array(z.string()),
+      // Bullets live in project subgroups. One subgroup → render bullets only.
+      projects: z.array(ProjectGroupSchema).describe("≥1 project subgroup; bullets belong here"),
     }),
   ),
   education: z.array(
@@ -81,7 +81,16 @@ export const ParsedProfileSchema = z.object({
       startDate: z.string().describe("e.g. Jan 2021"),
       endDate: z.string().describe("e.g. Present or Mar 2023"),
       current: z.boolean(),
-      bullets: z.array(z.string()),
+      // Group this company's bullets into project subgroups (the themes worked
+      // on). If the resume has no named projects under a company, emit ONE group
+      // with empty name/type holding all its bullets.
+      projects: z.array(
+        z.object({
+          name: z.string().describe("Project name, or empty if unnamed"),
+          type: z.string().describe("Kind of project; infer a short label"),
+          bullets: z.array(z.string()),
+        }),
+      ),
     }),
   ),
   education: z.array(
@@ -92,15 +101,6 @@ export const ParsedProfileSchema = z.object({
       startDate: z.string(),
       endDate: z.string(),
       gpa: z.string(),
-    }),
-  ),
-  projects: z.array(
-    z.object({
-      name: z.string(),
-      type: z.string().describe("Short category, e.g. Web app, Internal platform"),
-      company: z.string(),
-      description: z.string(),
-      bullets: z.array(z.string()),
     }),
   ),
   skills: z.array(

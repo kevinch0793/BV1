@@ -12,7 +12,7 @@ export default async function TailorPage({ params }: { params: Promise<{ profile
     include: {
       baseResume: true,
       jobs: { where: { status: "fetched" }, orderBy: { createdAt: "desc" } },
-      _count: { select: { projects: true } },
+      _count: { select: { experiences: true } },
     },
   });
   if (!profile) notFound();
@@ -28,7 +28,7 @@ export default async function TailorPage({ params }: { params: Promise<{ profile
       <TailorWorkspace
         profileId={profile.id}
         hasBaseResume={!!profile.baseResume}
-        projectCount={profile._count.projects}
+        projectCount={profile._count.experiences}
         jobs={profile.jobs.map((j) => ({
           id: j.id,
           label: `${j.role || "Role?"} · ${j.company || "Company?"}`,

@@ -35,6 +35,34 @@ function Bullets({ items }: { items: string[] }) {
   );
 }
 
+// Render a company's project subgroups. One group → bullets only (no title);
+// two or more → a "Name — Type" subtitle above each group's bullets.
+function ExperienceGroups({
+  projects,
+  titleClassName,
+}: {
+  projects: ResumeContent["experience"][number]["projects"];
+  titleClassName: string;
+}) {
+  const groups = (projects ?? []).filter((g) => g.bullets.length > 0 || g.name);
+  if (groups.length <= 1) return <Bullets items={groups[0]?.bullets ?? []} />;
+  return (
+    <>
+      {groups.map((g, i) => (
+        <div key={i} className="mt-1">
+          {(g.name || g.type) && (
+            <div className={titleClassName}>
+              {g.name}
+              {g.type ? ` — ${g.type}` : ""}
+            </div>
+          )}
+          <Bullets items={g.bullets} />
+        </div>
+      ))}
+    </>
+  );
+}
+
 // ---- Classic ----------------------------------------------------------------
 function Classic({ r }: { r: ResumeContent }) {
   return (
@@ -56,17 +84,7 @@ function Classic({ r }: { r: ResumeContent }) {
                 <span className="text-neutral-600">{[e.startDate, e.endDate].filter(Boolean).join(" – ")}</span>
               </div>
               {e.location && <div className="text-[11px] text-neutral-600">{e.location}</div>}
-              <Bullets items={e.bullets} />
-            </div>
-          ))}
-        </Section>
-      )}
-      {r.projects.length > 0 && (
-        <Section title="Projects">
-          {r.projects.map((p, i) => (
-            <div key={i} className="mb-2">
-              <div className="font-semibold">{p.name} <span className="font-normal italic text-neutral-700">— {p.type}{p.company && ` · ${p.company}`}</span></div>
-              <Bullets items={p.bullets} />
+              <ExperienceGroups projects={e.projects} titleClassName="mt-1 font-semibold italic text-neutral-800" />
             </div>
           ))}
         </Section>
@@ -131,17 +149,7 @@ function Modern({ r }: { r: ResumeContent }) {
                 <span className="text-[11px] text-neutral-500">{[e.startDate, e.endDate].filter(Boolean).join(" – ")}</span>
               </div>
               <div className="text-[12px] text-sky-800">{e.company}{e.location && ` · ${e.location}`}</div>
-              <Bullets items={e.bullets} />
-            </div>
-          ))}
-        </Section>
-      )}
-      {r.projects.length > 0 && (
-        <Section title="Projects">
-          {r.projects.map((p, i) => (
-            <div key={i} className="mb-2">
-              <div className="font-semibold text-neutral-900">{p.name} <span className="font-normal text-sky-800">· {p.type}{p.company && ` · ${p.company}`}</span></div>
-              <Bullets items={p.bullets} />
+              <ExperienceGroups projects={e.projects} titleClassName="mt-1 font-semibold text-sky-800" />
             </div>
           ))}
         </Section>
@@ -188,15 +196,8 @@ function Compact({ r }: { r: ResumeContent }) {
           {r.experience.map((e, i) => (
             <div key={i} className="mb-1.5">
               <div className="flex justify-between"><span className="font-semibold">{e.role} — {e.company}</span><span className="text-neutral-500">{[e.startDate, e.endDate].filter(Boolean).join("–")}</span></div>
-              <Bullets items={e.bullets} />
+              <ExperienceGroups projects={e.projects} titleClassName="mt-0.5 font-semibold" />
             </div>
-          ))}
-        </Section>
-      )}
-      {r.projects.length > 0 && (
-        <Section title="Projects">
-          {r.projects.map((p, i) => (
-            <div key={i} className="mb-1.5"><span className="font-semibold">{p.name}</span> — {p.type}{p.company && ` · ${p.company}`}<Bullets items={p.bullets} /></div>
           ))}
         </Section>
       )}

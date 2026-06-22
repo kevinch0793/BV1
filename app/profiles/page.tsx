@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function ProfilesPage() {
   const profiles = await prisma.profile.findMany({
     orderBy: { updatedAt: "desc" },
-    include: { _count: { select: { jobs: true, tailored: true, projects: true } } },
+    include: { _count: { select: { jobs: true, tailored: true, experiences: true } } },
   });
 
   return (
@@ -38,7 +38,7 @@ export default async function ProfilesPage() {
                 <div className="text-sm font-medium text-sky-700">{p.label}</div>
                 <div className="text-lg font-semibold text-neutral-900">{p.fullName}</div>
                 <div className="mt-2 text-xs text-neutral-500">
-                  {p._count.projects} projects · {p._count.jobs} jobs · {p._count.tailored} resumes
+                  {p._count.experiences} roles · {p._count.jobs} jobs · {p._count.tailored} resumes
                 </div>
               </Link>
             </li>

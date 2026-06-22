@@ -1,6 +1,9 @@
 // Prompt builders for the three LLM tasks: extract a job posting, tailor from a
 // base resume, and generate a resume from scratch. Each returns { system, prompt }.
 
+/** A project subgroup inside one company: the theme of work there. */
+export type ProjectGroup = { name: string; type: string; bullets: string[] };
+
 export type ProfileForLLM = {
   fullName: string;
   email?: string | null;
@@ -15,7 +18,8 @@ export type ProfileForLLM = {
     startDate?: string | null;
     endDate?: string | null;
     current: boolean;
-    bullets: string[];
+    // Each company has ≥1 project subgroup; bullets live inside them.
+    projects: ProjectGroup[];
   }[];
   education: {
     school: string;
@@ -24,13 +28,6 @@ export type ProfileForLLM = {
     startDate?: string | null;
     endDate?: string | null;
     gpa?: string | null;
-  }[];
-  projects: {
-    name: string;
-    type: string;
-    company?: string | null;
-    description?: string | null;
-    bullets: string[];
   }[];
   skills: { name: string; category?: string | null }[];
 };
@@ -55,20 +52,16 @@ function serializeProfile(p: ProfileForLLM): string {
   if (p.summary) lines.push(`\nSummary: ${p.summary}`);
 
   if (p.experiences.length) {
-    lines.push(`\n## Work experience`);
+    lines.push(
+      `\n## Work experience (each company's bullets are grouped into project subgroups — the theme of work there. Project names + types are authoritative; do not invent them.)`,
+    );
     for (const e of p.experiences) {
       const dates = `${e.startDate ?? "?"} – ${e.current ? "Present" : e.endDate ?? "?"}`;
       lines.push(`- ${e.role} at ${e.company} (${e.location ?? ""}) [${dates}]`);
-      for (const b of e.bullets) lines.push(`  • ${b}`);
-    }
-  }
-
-  if (p.projects.length) {
-    lines.push(`\n## Projects (name + type are authoritative — do not invent project names)`);
-    for (const pr of p.projects) {
-      lines.push(`- ${pr.name} — ${pr.type}${pr.company ? ` @ ${pr.company}` : ""}`);
-      if (pr.description) lines.push(`  ${pr.description}`);
-      for (const b of pr.bullets) lines.push(`  • ${b}`);
+      for (const pr of e.projects ?? []) {
+        if (pr.name || pr.type) lines.push(`  ▸ Project: ${pr.name}${pr.type ? ` — ${pr.type}` : ""}`);
+        for (const b of pr.bullets) lines.push(`    • ${b}`);
+      }
     }
   }
 
@@ -104,11 +97,12 @@ function serializeJob(j: JobForLLM): string {
 }
 
 const TAILORING_RULES = `Rules:
-- Tailor STRONGLY to the job description: mirror its keywords, terminology, and priorities; reorder and reweight content so the most JD-relevant experience leads.
-- Rewrite bullets to be achievement-oriented and quantified where the source supports it. Start bullets with strong action verbs.
-- NEVER fabricate employers, titles, dates, degrees, or metrics that aren't supported by the provided material. You may rephrase and emphasize, not invent facts.
-- Keep it truthful, concise, and ATS-friendly. Prefer concrete over generic.
-- Fill every schema field; use empty strings/arrays when a section genuinely has no content.`;
+- Tailor STRONGLY to the job description. First identify the JD's MUST-HAVE and PREFERRED skills/keywords (from its requirements and description). Mirror that exact terminology and lead with the most JD-relevant content.
+- Rely on the JD's skills: weave its must-have and preferred skills/keywords into the resume — into the SKILLS section AND into the bullets of the company/project where each skill most plausibly fits — even when they are missing from the source material. Assign each skill to the right company/project context, never randomly.
+- Output structure: every work-experience entry contains one or more PROJECT SUBGROUPS (the theme of work at that company: official name + kind). Put each bullet inside the relevant subgroup. Preserve the candidate's given project names/types — do NOT invent or rename projects. If a company has a single unnamed subgroup, keep its name/type empty and just place bullets there.
+- Rewrite bullets to be achievement-oriented and quantified where the source supports it; start with strong action verbs.
+- NEVER fabricate employers, job titles, dates, degrees, or specific numeric metrics that aren't supported. You MAY add JD skills/keywords and rephrase; you may NOT invent facts of record.
+- Keep it truthful, concise, and ATS-friendly. Fill every schema field; use empty strings/arrays where a section genuinely has no content.`;
 
 // 1) Extraction — raw page text/HTML → JobFields
 export function buildExtractionPrompt(rawText: string) {
@@ -136,7 +130,7 @@ export function buildTailorWithBasePrompt(args: {
       `# Candidate profile (supplementary facts)\n${serializeProfile(args.profile)}`,
       `# Candidate's existing base resume (primary source of truth)\n"""\n${args.baseResume.slice(0, 40000)}\n"""`,
       args.instructions ? `# Extra user instructions (follow these)\n${args.instructions}` : "",
-      `# Task\nRewrite and reorganize the base resume into a tailored resume strongly aligned with the job description above. Use the profile facts to fill gaps. Honor the extra user instructions.`,
+      `# Task\nRewrite and reorganize the base resume into a tailored resume strongly aligned with the job description. Group each company's bullets under its project subgroups (use the profile's project names/types as the authoritative themes). Weave the JD's must-have/preferred skills into the right company/project and the skills section. Honor the extra user instructions.`,
     ]
       .filter(Boolean)
       .join("\n\n"),
@@ -150,12 +144,12 @@ export function buildFromScratchPrompt(args: {
   instructions?: string;
 }) {
   return {
-    system: `You are an expert resume writer. You build a tailored resume from a candidate's structured profile when no base resume exists. ${TAILORING_RULES}\n- The candidate's projects (name + type) are authoritative anchors — feature them and expand them into JD-aligned, achievement-oriented bullets without inventing the underlying facts.`,
+    system: `You are an expert resume writer. You build a tailored resume from a candidate's structured profile when no base resume exists. ${TAILORING_RULES}\n- Each company's project subgroups (name + kind) are authoritative anchors — keep them, and expand each subgroup's bullets into JD-aligned, achievement-oriented points without inventing the underlying facts.`,
     prompt: [
       `# Job description\n${serializeJob(args.job)}`,
       `# Candidate profile\n${serializeProfile(args.profile)}`,
       args.instructions ? `# Extra user instructions (follow these)\n${args.instructions}` : "",
-      `# Task\nGenerate a complete, tailored resume strongly aligned with the job description above, built from the profile. Expand the listed projects and experience into compelling, JD-relevant bullets. Write a summary and skills section aimed squarely at this role.`,
+      `# Task\nGenerate a complete, tailored resume strongly aligned with the job description, built from the profile. Keep each company's project subgroups and expand their bullets into compelling, JD-relevant points. Weave the JD's must-have/preferred skills into the right company/project and the skills section. Write a summary aimed squarely at this role.`,
     ]
       .filter(Boolean)
       .join("\n\n"),

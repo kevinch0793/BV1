@@ -5,14 +5,30 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { parseResume } from "@/lib/llm/service";
 
-function lines(v: FormDataEntryValue | null): string[] {
-  return String(v ?? "")
-    .split("\n")
-    .map((l) => l.replace(/^[-•\s]+/, "").trim())
-    .filter(Boolean);
-}
 const str = (v: FormDataEntryValue | null) => String(v ?? "").trim();
 const orNull = (v: FormDataEntryValue | null) => str(v) || null;
+
+type ProjectGroup = { name: string; type: string; bullets: string[] };
+
+// Parse the editor's hidden `projects` field (JSON: [{name,type,bullets:string[]}]).
+// Always returns ≥1 subgroup so every company keeps a theme slot.
+function parseProjects(v: FormDataEntryValue | null): ProjectGroup[] {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(String(v ?? "[]"));
+  } catch {
+    raw = [];
+  }
+  const groups: ProjectGroup[] = (Array.isArray(raw) ? raw : []).map((g) => {
+    const o = (g ?? {}) as Record<string, unknown>;
+    const bullets = Array.isArray(o.bullets)
+      ? o.bullets.map((b) => String(b).replace(/^[-•\s]+/, "").trim()).filter(Boolean)
+      : [];
+    return { name: String(o.name ?? "").trim(), type: String(o.type ?? "").trim(), bullets };
+  });
+  const kept = groups.filter((g) => g.name || g.type || g.bullets.length);
+  return kept.length ? kept : [{ name: "", type: "", bullets: [] }];
+}
 
 // ---- Profile ----------------------------------------------------------------
 
@@ -71,7 +87,7 @@ export async function updateExperience(id: string, profileId: string, formData: 
       startDate: orNull(formData.get("startDate")),
       endDate: orNull(formData.get("endDate")),
       current: formData.get("current") === "on",
-      bullets: lines(formData.get("bullets")),
+      projects: parseProjects(formData.get("projects")),
     },
   });
   revalidatePath(`/profiles/${profileId}`);
@@ -107,35 +123,6 @@ export async function updateEducation(id: string, profileId: string, formData: F
 
 export async function deleteEducation(id: string, profileId: string) {
   await prisma.education.delete({ where: { id } });
-  revalidatePath(`/profiles/${profileId}`);
-}
-
-// ---- Projects (name + type required for from-scratch generation) ------------
-
-export async function addProject(profileId: string) {
-  const count = await prisma.project.count({ where: { profileId } });
-  await prisma.project.create({
-    data: { profileId, name: "", type: "", order: count },
-  });
-  revalidatePath(`/profiles/${profileId}`);
-}
-
-export async function updateProject(id: string, profileId: string, formData: FormData) {
-  await prisma.project.update({
-    where: { id },
-    data: {
-      name: str(formData.get("name")),
-      type: str(formData.get("type")),
-      company: orNull(formData.get("company")),
-      description: orNull(formData.get("description")),
-      bullets: lines(formData.get("bullets")),
-    },
-  });
-  revalidatePath(`/profiles/${profileId}`);
-}
-
-export async function deleteProject(id: string, profileId: string) {
-  await prisma.project.delete({ where: { id } });
   revalidatePath(`/profiles/${profileId}`);
 }
 
@@ -243,6 +230,10 @@ export async function parseResumeIntoProfile(
     if (parsed.experiences.length) {
       await tx.experience.deleteMany({ where: { profileId } });
       for (const [i, e] of parsed.experiences.entries()) {
+        const projects =
+          e.projects?.length
+            ? e.projects.map((g) => ({ name: g.name, type: g.type, bullets: g.bullets }))
+            : [{ name: "", type: "", bullets: [] }];
         await tx.experience.create({
           data: {
             profileId,
@@ -252,7 +243,7 @@ export async function parseResumeIntoProfile(
             startDate: e.startDate || null,
             endDate: e.endDate || null,
             current: e.current,
-            bullets: e.bullets,
+            projects,
             order: i,
           },
         });
@@ -270,22 +261,6 @@ export async function parseResumeIntoProfile(
             startDate: ed.startDate || null,
             endDate: ed.endDate || null,
             gpa: ed.gpa || null,
-            order: i,
-          },
-        });
-      }
-    }
-    if (parsed.projects.length) {
-      await tx.project.deleteMany({ where: { profileId } });
-      for (const [i, p] of parsed.projects.entries()) {
-        await tx.project.create({
-          data: {
-            profileId,
-            name: p.name,
-            type: p.type || "Project",
-            company: p.company || null,
-            description: p.description || null,
-            bullets: p.bullets,
             order: i,
           },
         });
@@ -311,7 +286,7 @@ export async function parseResumeIntoProfile(
     summary: {
       experiences: parsed.experiences.length,
       education: parsed.education.length,
-      projects: parsed.projects.length,
+      projects: parsed.experiences.reduce((n, e) => n + (e.projects?.length ?? 0), 0),
       skills: parsed.skills.reduce((n, s) => n + s.items.length, 0),
     },
   };

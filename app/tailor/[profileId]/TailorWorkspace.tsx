@@ -201,36 +201,27 @@ function Editor({ content, patch }: { content: ResumeContent; patch: (fn: (c: Re
       <label className={label}>Headline / title<input className={input} value={content.title} onChange={(e) => patch((c) => { c.title = e.target.value; })} /></label>
       <label className={label}>Summary<textarea rows={3} className={input} value={content.summary} onChange={(e) => patch((c) => { c.summary = e.target.value; })} /></label>
 
-      <Group title="Experience">
+      <Group title="Experience (bullets grouped by project)">
         {content.experience.map((e, i) => (
           <div key={i} className="rounded-md border border-neutral-200 p-2">
             <div className="grid grid-cols-2 gap-2">
               <input className={input} value={e.role} placeholder="Role" onChange={(ev) => patch((c) => { c.experience[i].role = ev.target.value; })} />
               <input className={input} value={e.company} placeholder="Company" onChange={(ev) => patch((c) => { c.experience[i].company = ev.target.value; })} />
             </div>
-            <textarea
-              rows={3}
-              className={`${input} mt-2`}
-              value={e.bullets.join("\n")}
-              onChange={(ev) => patch((c) => { c.experience[i].bullets = ev.target.value.split("\n"); })}
-            />
-          </div>
-        ))}
-      </Group>
-
-      <Group title="Projects">
-        {content.projects.map((p, i) => (
-          <div key={i} className="rounded-md border border-neutral-200 p-2">
-            <div className="grid grid-cols-2 gap-2">
-              <input className={input} value={p.name} placeholder="Name" onChange={(ev) => patch((c) => { c.projects[i].name = ev.target.value; })} />
-              <input className={input} value={p.type} placeholder="Type" onChange={(ev) => patch((c) => { c.projects[i].type = ev.target.value; })} />
-            </div>
-            <textarea
-              rows={3}
-              className={`${input} mt-2`}
-              value={p.bullets.join("\n")}
-              onChange={(ev) => patch((c) => { c.projects[i].bullets = ev.target.value.split("\n"); })}
-            />
+            {(e.projects ?? []).map((p, j) => (
+              <div key={j} className="mt-2 rounded border border-neutral-100 bg-neutral-50 p-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <input className={input} value={p.name} placeholder="Project (optional)" onChange={(ev) => patch((c) => { c.experience[i].projects[j].name = ev.target.value; })} />
+                  <input className={input} value={p.type} placeholder="Kind (optional)" onChange={(ev) => patch((c) => { c.experience[i].projects[j].type = ev.target.value; })} />
+                </div>
+                <textarea
+                  rows={3}
+                  className={`${input} mt-2`}
+                  value={p.bullets.join("\n")}
+                  onChange={(ev) => patch((c) => { c.experience[i].projects[j].bullets = ev.target.value.split("\n"); })}
+                />
+              </div>
+            ))}
           </div>
         ))}
       </Group>
@@ -263,8 +254,12 @@ function clean(c: ResumeContent): ResumeContent {
     skills: c.skills
       .map((s) => ({ ...s, items: s.items.filter((x) => x.trim()) }))
       .filter((s) => s.items.length),
-    experience: c.experience.map((e) => ({ ...e, bullets: e.bullets.filter((b) => b.trim()) })),
-    projects: c.projects.map((p) => ({ ...p, bullets: p.bullets.filter((b) => b.trim()) })),
+    experience: c.experience.map((e) => ({
+      ...e,
+      projects: (e.projects ?? [])
+        .map((p) => ({ ...p, bullets: p.bullets.filter((b) => b.trim()) }))
+        .filter((p) => p.bullets.length || p.name),
+    })),
     contact: { ...c.contact, links: c.contact.links.filter((l) => l.url.trim()) },
   };
 }

@@ -147,6 +147,9 @@ export async function setJobFromText(
 }
 
 export async function deleteJob(id: string, profileId: string) {
+  // The tailored resume for this job is removed via the DB cascade, so it stops
+  // counting in totals and drops out of history.
   await prisma.jobPosting.delete({ where: { id } });
   revalidatePath(`/profiles/${profileId}/dashboard`);
+  revalidatePath("/");
 }
