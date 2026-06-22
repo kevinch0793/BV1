@@ -5,6 +5,7 @@ import { ResumePreview, TEMPLATES, type TemplateId } from "@/components/template
 import type { SectionKey } from "@/lib/sections";
 import type { ResumeContent } from "@/lib/llm/schema";
 import { downloadResume } from "@/lib/exportClient";
+import { saveResumeToDownloads } from "@/app/actions/export";
 
 type FitDetail = { matched?: string[]; missing?: string[] };
 
@@ -27,15 +28,23 @@ export function SavedResumeView({
 }) {
   const [template, setTemplate] = useState<TemplateId>(templateId);
   const [downloading, setDownloading] = useState<"pdf" | "docx" | null>(null);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const hasFit = fitAfter != null;
   const delta = fitBefore != null && fitAfter != null ? fitAfter - fitBefore : null;
 
-  // One-click download: hit the export endpoint (Content-Disposition: attachment),
-  // so the file saves directly with no browser print dialog.
+  // Write straight into ~/Downloads (local app), overwriting the same filename —
+  // no browser dialog and no "(1)" rename. Fall back to a browser download only
+  // if the server-side write fails.
   async function download(format: "pdf" | "docx") {
     setDownloading(format);
+    setSavedMsg(null);
     try {
-      await downloadResume(tailoredId, format, { template, order: order.join(",") });
+      const r = await saveResumeToDownloads(tailoredId, format, { template, order: order.join(",") });
+      if (r.ok) setSavedMsg(`Saved to Downloads/${r.path.split("/").pop()}`);
+      else {
+        await downloadResume(tailoredId, format, { template, order: order.join(",") });
+        setSavedMsg("Downloaded.");
+      }
     } catch (e) {
       alert(`Download failed: ${e instanceof Error ? e.message : "unknown error"}`);
     } finally {
@@ -72,6 +81,7 @@ export function SavedResumeView({
           >
             {downloading === "docx" ? "Preparing…" : "Download DOCX"}
           </button>
+          {savedMsg && <span className="text-xs text-emerald-600">{savedMsg}</span>}
         </div>
       </div>
 

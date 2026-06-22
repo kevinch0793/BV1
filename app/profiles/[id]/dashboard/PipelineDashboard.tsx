@@ -6,6 +6,7 @@ import { addJobUrls, setJobFromText, deleteJob } from "@/app/actions/jobs";
 import { startPipeline, pipelineRunning, retryJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResume } from "@/lib/exportClient";
+import { saveResumeToDownloads } from "@/app/actions/export";
 
 type Job = {
   id: string;
@@ -217,15 +218,16 @@ function JobRow({
   const busy = stage === "fetching" || stage === "tailoring";
   const canPaste = stage === "pending" || stage === "failed";
 
-  // "Apply": open the job posting AND download the tailored resume in one click,
-  // so you can start the application with the resume in hand. Open the JD first
-  // (synchronous, so the popup isn't blocked), then fetch the download.
+  // "Apply": open the job posting AND save the tailored resume to ~/Downloads in
+  // one click, so you can start the application with the resume in hand. Open the
+  // JD first (synchronous, so the popup isn't blocked), then write the file.
   async function apply() {
     if (job.url) window.open(job.url, "_blank", "noopener,noreferrer");
     if (!job.tailoredId) return;
     setApplying(true);
     try {
-      await downloadResume(job.tailoredId, "pdf");
+      const r = await saveResumeToDownloads(job.tailoredId, "pdf");
+      if (!r.ok) await downloadResume(job.tailoredId, "pdf");
     } catch (e) {
       alert(`Resume download failed: ${e instanceof Error ? e.message : "unknown error"}`);
     } finally {
