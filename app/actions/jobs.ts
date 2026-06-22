@@ -153,3 +153,23 @@ export async function deleteJob(id: string, profileId: string) {
   revalidatePath(`/profiles/${profileId}/dashboard`);
   revalidatePath("/");
 }
+
+/** Mark a job as applied, recording whether a tailored resume was used. */
+export async function markApplied(id: string, usedTailored: boolean) {
+  await prisma.jobPosting.updateMany({
+    where: { id },
+    data: { appliedAt: new Date(), appliedTailored: usedTailored },
+  });
+  const job = await prisma.jobPosting.findUnique({ where: { id }, select: { profileId: true } });
+  if (job) revalidatePath(`/profiles/${job.profileId}/dashboard`);
+}
+
+/** Clear a job's applied status (e.g. marked by mistake). */
+export async function unmarkApplied(id: string) {
+  await prisma.jobPosting.updateMany({
+    where: { id },
+    data: { appliedAt: null, appliedTailored: null },
+  });
+  const job = await prisma.jobPosting.findUnique({ where: { id }, select: { profileId: true } });
+  if (job) revalidatePath(`/profiles/${job.profileId}/dashboard`);
+}

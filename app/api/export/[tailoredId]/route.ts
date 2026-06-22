@@ -4,24 +4,18 @@ import { getSettings, parseSectionOrder } from "@/lib/settings";
 import { normalizeTemplate } from "@/components/templates";
 import { buildResumeDocx } from "@/lib/export/docx";
 import { renderResumePdf } from "@/lib/export/pdf";
+import { resumeFileName } from "@/lib/export/filename";
 import type { ResumeContent } from "@/lib/llm/schema";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-// "Alex Rivera" -> "Alex Rivera" (keep spaces; drop filesystem-illegal chars).
-// No company/JD in the name, so the file is the same each time and overwrites.
-function fileBase(name: string): string {
-  const cleaned = (name || "Resume").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
-  return cleaned || "Resume";
-}
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ tailoredId: string }> },
 ) {
   const { tailoredId } = await params;
-  const t = await prisma.tailoredResume.findUnique({ where: { id: tailoredId } });
+  const t = await prisma.tailoredResume.findUnique({ where: { id: tailoredId }, include: { job: true } });
   if (!t) return new NextResponse("Not found", { status: 404 });
 
   const url = new URL(req.url);
@@ -35,7 +29,7 @@ export async function GET(
   const order = orderParam ? parseSectionOrder(orderParam) : settings.sectionOrder;
 
   const content = t.content as ResumeContent;
-  const filename = `${fileBase(content.name)} Resume.${format}`;
+  const filename = resumeFileName(content.name, t.job?.company, format);
 
   try {
     if (format === "docx") {

@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addJobUrls, setJobFromText, deleteJob } from "@/app/actions/jobs";
+import { addJobUrls, setJobFromText, deleteJob, markApplied, unmarkApplied } from "@/app/actions/jobs";
 import { startPipeline, pipelineRunning, retryJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResume } from "@/lib/exportClient";
-import { saveResumeToDownloads } from "@/app/actions/export";
+import { fitColor } from "@/lib/fit";
 
 type Job = {
   id: string;
@@ -18,6 +18,8 @@ type Job = {
   error: string | null;
   tailoredId: string | null;
   fitAfter: number | null;
+  appliedAt: string | null;
+  appliedTailored: boolean | null;
 };
 
 const input =
@@ -174,6 +176,7 @@ export function PipelineDashboard({
                   <th className="px-4 py-2 font-medium">Company</th>
                   <th className="px-4 py-2 font-medium">Location</th>
                   <th className="px-4 py-2 font-medium">Source</th>
+                  <th className="px-4 py-2 font-medium">Applied</th>
                   <th className="px-4 py-2 text-right font-medium">Actions</th>
                 </tr>
               </thead>
@@ -185,6 +188,7 @@ export function PipelineDashboard({
                     onRemove={(id) => deleteJob(id, profileId).then(() => router.refresh())}
                     onRetry={(id) => retryJob(id).then(kick)}
                     onPasted={kick}
+                    onRefresh={() => router.refresh()}
                   />
                 ))}
               </tbody>
@@ -201,11 +205,13 @@ function JobRow({
   onRemove,
   onRetry,
   onPasted,
+  onRefresh,
 }: {
   job: Job;
   onRemove: (id: string) => void;
   onRetry: (id: string) => void;
   onPasted: () => void;
+  onRefresh: () => void;
 }) {
   const [showPaste, setShowPaste] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -218,21 +224,26 @@ function JobRow({
   const busy = stage === "fetching" || stage === "tailoring";
   const canPaste = stage === "pending" || stage === "failed";
 
-  // "Apply": open the job posting AND save the tailored resume to ~/Downloads in
-  // one click, so you can start the application with the resume in hand. Open the
-  // JD first (synchronous, so the popup isn't blocked), then write the file.
+  // "Apply": open the job posting AND (if tailored) download the resume in one
+  // click, then mark the job applied — recording whether a tailored resume was
+  // used. Open the JD first (synchronous, so the popup isn't blocked).
   async function apply() {
     if (job.url) window.open(job.url, "_blank", "noopener,noreferrer");
-    if (!job.tailoredId) return;
     setApplying(true);
     try {
-      const r = await saveResumeToDownloads(job.tailoredId, "pdf");
-      if (!r.ok) await downloadResume(job.tailoredId, "pdf");
+      if (job.tailoredId) await downloadResume(job.tailoredId, "pdf");
+      await markApplied(job.id, !!job.tailoredId);
+      onRefresh();
     } catch (e) {
-      alert(`Resume download failed: ${e instanceof Error ? e.message : "unknown error"}`);
+      alert(`Apply failed: ${e instanceof Error ? e.message : "unknown error"}`);
     } finally {
       setApplying(false);
     }
+  }
+
+  async function unapply() {
+    await unmarkApplied(job.id);
+    onRefresh();
   }
 
   return (
@@ -252,26 +263,43 @@ function JobRow({
         <td className="px-4 py-3 text-neutral-700">{job.location || <span className="text-neutral-400">—</span>}</td>
         <td className="px-4 py-3">
           {job.url ? (
-            job.tailoredId ? (
-              <button
-                onClick={apply}
-                disabled={applying}
-                title="Open the job posting and download your tailored resume"
-                className="font-medium text-sky-700 hover:underline disabled:opacity-50"
-              >
-                {applying ? "Opening…" : "Apply ↗"}
-              </button>
-            ) : (
-              <a href={job.url} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline">link ↗</a>
-            )
+            <button
+              onClick={apply}
+              disabled={applying}
+              title={job.tailoredId ? "Open the job posting and download your tailored resume" : "Open the job posting and mark as applied"}
+              className="font-medium text-sky-700 hover:underline disabled:opacity-50"
+            >
+              {applying ? "Opening…" : job.appliedAt ? "Re-apply ↗" : "Apply ↗"}
+            </button>
           ) : (
             <span className="text-neutral-400">—</span>
+          )}
+        </td>
+        <td className="px-4 py-3 whitespace-nowrap">
+          {job.appliedAt ? (
+            <div className="flex flex-col gap-0.5">
+              <span className="inline-flex w-fit items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700">
+                ✓ Applied
+              </span>
+              <span className="text-[10px] text-neutral-400">
+                {fmtDate(job.appliedAt)} ·{" "}
+                <span className={job.appliedTailored ? "text-emerald-600" : "text-amber-600"}>
+                  {job.appliedTailored ? "tailored" : "generic"}
+                </span>{" "}
+                · <button onClick={unapply} className="hover:underline">undo</button>
+              </span>
+            </div>
+          ) : (
+            <span className="text-neutral-300">—</span>
           )}
         </td>
         <td className="px-4 py-3">
           <div className="flex items-center justify-end gap-3">
             {job.fitAfter != null && (
-              <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700" title="ATS match after tailoring">
+              <span
+                className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${fitColor(job.fitAfter).bg} ${fitColor(job.fitAfter).text}`}
+                title="ATS match after tailoring"
+              >
                 {job.fitAfter}%
               </span>
             )}
@@ -292,7 +320,7 @@ function JobRow({
       </tr>
       {showPaste && (
         <tr>
-          <td colSpan={6} className="px-4 pb-3">
+          <td colSpan={7} className="px-4 pb-3">
             <form
               action={(fd) => {
                 setPasteErr(null);
@@ -325,6 +353,11 @@ function JobRow({
       )}
     </>
   );
+}
+
+function fmtDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function Spinner({ small }: { small?: boolean }) {

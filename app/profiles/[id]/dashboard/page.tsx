@@ -33,6 +33,8 @@ export default async function ProfileDashboard({ params }: { params: Promise<{ i
     error: j.error,
     tailoredId: tailoredByJob.get(j.id)?.id ?? null,
     fitAfter: tailoredByJob.get(j.id)?.fitAfter ?? null,
+    appliedAt: j.appliedAt ? j.appliedAt.toISOString() : null,
+    appliedTailored: j.appliedTailored,
   }));
 
   return (
