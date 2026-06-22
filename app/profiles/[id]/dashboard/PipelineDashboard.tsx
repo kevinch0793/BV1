@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addJobUrls, setJobFromText, deleteJob, markApplied, unmarkApplied } from "@/app/actions/jobs";
+import { addJobUrls, setJobFromText, deleteJob, setApplyStatus, type ApplyStatus } from "@/app/actions/jobs";
 import { startPipeline, pipelineRunning, retryJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResume } from "@/lib/exportClient";
@@ -18,7 +18,7 @@ type Job = {
   error: string | null;
   tailoredId: string | null;
   fitAfter: number | null;
-  appliedAt: string | null;
+  applyStatus: string;
   appliedTailored: boolean | null;
 };
 
@@ -216,34 +216,54 @@ function JobRow({
   const [showPaste, setShowPaste] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [status, setStatus] = useState<ApplyStatus>(job.applyStatus as ApplyStatus);
+  const [tailored, setTailored] = useState<boolean>(!!job.appliedTailored);
   const [pending, start] = useTransition();
   const [pasteErr, setPasteErr] = useState<string | null>(null);
+
+  // Keep the local controls in sync after a server refresh.
+  useEffect(() => {
+    setStatus(job.applyStatus as ApplyStatus);
+    setTailored(!!job.appliedTailored);
+  }, [job.applyStatus, job.appliedTailored]);
 
   const stage = stageKey(job);
   const st = STAGE[stage];
   const busy = stage === "fetching" || stage === "tailoring";
   const canPaste = stage === "pending" || stage === "failed";
 
-  // "Apply": open the job posting AND (if tailored) download the resume in one
-  // click, then mark the job applied — recording whether a tailored resume was
-  // used. Open the JD first (synchronous, so the popup isn't blocked).
+  // Manual status change from the dropdown: a manual "applied" defaults to
+  // generic (we don't assume the tailored resume was used).
+  async function changeStatus(next: ApplyStatus) {
+    setStatus(next);
+    if (next !== "applied") setTailored(false);
+    await setApplyStatus(job.id, next);
+    onRefresh();
+  }
+
+  // Toggle whether the application actually used the tailored resume.
+  async function setUsedTailored(next: boolean) {
+    setStatus("applied");
+    setTailored(next);
+    await setApplyStatus(job.id, "applied", next);
+    onRefresh();
+  }
+
+  // "Apply": open the job posting and download the tailored resume so you can
+  // submit it on the site. It does NOT touch the applied status — a download
+  // can't prove the resume was used, so you confirm that yourself afterward via
+  // the dropdown + tailored/generic toggle.
   async function apply() {
     if (job.url) window.open(job.url, "_blank", "noopener,noreferrer");
+    if (!job.tailoredId) return;
     setApplying(true);
     try {
-      if (job.tailoredId) await downloadResume(job.tailoredId, "pdf");
-      await markApplied(job.id, !!job.tailoredId);
-      onRefresh();
+      await downloadResume(job.tailoredId, "pdf");
     } catch (e) {
-      alert(`Apply failed: ${e instanceof Error ? e.message : "unknown error"}`);
+      alert(`Resume download failed: ${e instanceof Error ? e.message : "unknown error"}`);
     } finally {
       setApplying(false);
     }
-  }
-
-  async function unapply() {
-    await unmarkApplied(job.id);
-    onRefresh();
   }
 
   return (
@@ -266,38 +286,45 @@ function JobRow({
             <button
               onClick={apply}
               disabled={applying}
-              title={job.tailoredId ? "Open the job posting and download your tailored resume" : "Open the job posting and mark as applied"}
+              title={job.tailoredId ? "Open the job posting and download your tailored resume" : "Open the job posting"}
               className="font-medium text-sky-700 hover:underline disabled:opacity-50"
             >
-              {applying ? "Opening…" : job.appliedAt ? "Re-apply ↗" : "Apply ↗"}
+              {applying ? "Opening…" : "Apply ↗"}
             </button>
           ) : (
             <span className="text-neutral-400">—</span>
           )}
         </td>
         <td className="px-4 py-3 whitespace-nowrap">
-          {job.appliedAt ? (
-            <div className="flex flex-col gap-0.5">
-              <span className="inline-flex w-fit items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700">
-                ✓ Applied
-              </span>
-              <span className="text-[10px] text-neutral-400">
-                {fmtDate(job.appliedAt)} ·{" "}
-                <span className={job.appliedTailored ? "text-emerald-600" : "text-amber-600"}>
-                  {job.appliedTailored ? "tailored" : "generic"}
-                </span>{" "}
-                · <button onClick={unapply} className="hover:underline">undo</button>
-              </span>
-            </div>
-          ) : (
-            <span className="text-neutral-300">—</span>
-          )}
+          <div className="flex flex-col gap-0.5">
+            <select
+              value={status}
+              onChange={(e) => changeStatus(e.target.value as ApplyStatus)}
+              className={`rounded border border-neutral-300 px-1.5 py-1 text-xs focus:border-sky-500 focus:outline-none ${
+                status === "applied" ? "bg-emerald-50 text-emerald-700" : status === "not_available" ? "bg-neutral-100 text-neutral-500" : "text-neutral-600"
+              }`}
+            >
+              <option value="none">-</option>
+              <option value="applied">Applied</option>
+              <option value="not_available">Not available</option>
+            </select>
+            {status === "applied" && (
+              <button
+                onClick={() => setUsedTailored(!tailored)}
+                title="Click to toggle whether you applied with the tailored resume"
+                className={`w-fit text-[10px] hover:underline ${tailored ? "text-emerald-600" : "text-amber-600"}`}
+              >
+                {tailored ? "tailored resume ✓" : "generic resume"}
+              </button>
+            )}
+          </div>
         </td>
         <td className="px-4 py-3">
           <div className="flex items-center justify-end gap-3">
             {job.fitAfter != null && (
               <span
-                className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${fitColor(job.fitAfter).bg} ${fitColor(job.fitAfter).text}`}
+                className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+                style={{ backgroundColor: fitColor(job.fitAfter).bg, color: fitColor(job.fitAfter).text }}
                 title="ATS match after tailoring"
               >
                 {job.fitAfter}%
@@ -353,11 +380,6 @@ function JobRow({
       )}
     </>
   );
-}
-
-function fmtDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function Spinner({ small }: { small?: boolean }) {

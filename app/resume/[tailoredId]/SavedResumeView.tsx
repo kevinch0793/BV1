@@ -118,7 +118,12 @@ function Stat({ label, value }: { label: string; value: number | null }) {
   return (
     <div className="flex items-baseline gap-1.5">
       <span className="text-xs text-neutral-500">{label}</span>
-      <span className={`text-2xl font-bold ${value == null ? "text-neutral-400" : fitColor(value).text}`}>{value ?? "—"}%</span>
+      <span
+        className="rounded-md px-2 py-0.5 text-2xl font-bold"
+        style={value == null ? { color: "#a3a3a3" } : { backgroundColor: fitColor(value).bg, color: fitColor(value).text }}
+      >
+        {value ?? "—"}%
+      </span>
     </div>
   );
 }

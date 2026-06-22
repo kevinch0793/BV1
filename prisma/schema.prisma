@@ -100,7 +100,8 @@ model JobPosting {
   status            String   @default("pending") // pending | fetched | failed
   error             String? // last fetch error, when status = failed
   createdAt         DateTime @default(now())
-  appliedAt         DateTime? // when the user applied (null = not applied)
+  applyStatus       String   @default("none") // none | applied | not_available
+  appliedAt         DateTime? // when the user marked it applied
   appliedTailored   Boolean? // did the application use a tailored resume?
 
   tailored TailoredResume[]

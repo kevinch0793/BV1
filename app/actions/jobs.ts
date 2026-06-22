@@ -154,21 +154,22 @@ export async function deleteJob(id: string, profileId: string) {
   revalidatePath("/");
 }
 
-/** Mark a job as applied, recording whether a tailored resume was used. */
-export async function markApplied(id: string, usedTailored: boolean) {
-  await prisma.jobPosting.updateMany({
-    where: { id },
-    data: { appliedAt: new Date(), appliedTailored: usedTailored },
-  });
-  const job = await prisma.jobPosting.findUnique({ where: { id }, select: { profileId: true } });
-  if (job) revalidatePath(`/profiles/${job.profileId}/dashboard`);
-}
+export type ApplyStatus = "none" | "applied" | "not_available";
 
-/** Clear a job's applied status (e.g. marked by mistake). */
-export async function unmarkApplied(id: string) {
+/**
+ * Manually set a job's application status. `usedTailored` records whether the
+ * application actually used the tailored resume — it is NOT inferred from a
+ * tailored resume merely existing (the Apply action passes true because it
+ * downloads it; a manual "applied" defaults to false and can be toggled).
+ */
+export async function setApplyStatus(id: string, status: ApplyStatus, usedTailored = false) {
   await prisma.jobPosting.updateMany({
     where: { id },
-    data: { appliedAt: null, appliedTailored: null },
+    data: {
+      applyStatus: status,
+      appliedAt: status === "applied" ? new Date() : null,
+      appliedTailored: status === "applied" ? usedTailored : null,
+    },
   });
   const job = await prisma.jobPosting.findUnique({ where: { id }, select: { profileId: true } });
   if (job) revalidatePath(`/profiles/${job.profileId}/dashboard`);
