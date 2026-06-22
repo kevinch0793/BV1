@@ -70,8 +70,10 @@ export async function previewTailored(
 ): Promise<{ content: ResumeContent; template: string; order: SectionKey[] } | null> {
   const t = await prisma.tailoredResume.findUnique({ where: { id: tailoredId } });
   if (!t) return null;
-  const { sectionOrder } = await getSettings();
-  return { content: t.content as ResumeContent, template: t.templateId, order: sectionOrder };
+  // Render with the global Settings template/order so a Settings change is
+  // reflected immediately (not the per-resume template saved at tailor time).
+  const { sectionOrder, defaultTemplate } = await getSettings();
+  return { content: t.content as ResumeContent, template: defaultTemplate, order: sectionOrder };
 }
 
 export async function saveTailored(args: {

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { getSettings } from "@/lib/settings";
 import { PipelineDashboard } from "./PipelineDashboard";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +17,6 @@ export default async function ProfileDashboard({ params }: { params: Promise<{ i
     },
   });
   if (!profile) notFound();
-
-  const { defaultTemplate } = await getSettings();
 
   const tailoredByJob = new Map<string, { id: string; fitAfter: number | null }>();
   for (const t of profile.tailored) if (t.jobPostingId) tailoredByJob.set(t.jobPostingId, { id: t.id, fitAfter: t.fitAfter });
@@ -59,7 +56,7 @@ export default async function ProfileDashboard({ params }: { params: Promise<{ i
         </p>
       )}
 
-      <PipelineDashboard profileId={profile.id} jobs={jobs} canTailor={canTailor} defaultTemplate={defaultTemplate} />
+      <PipelineDashboard profileId={profile.id} jobs={jobs} canTailor={canTailor} />
     </div>
   );
 }

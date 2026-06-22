@@ -16,7 +16,7 @@ export default async function ResumeViewer({ params }: { params: Promise<{ tailo
   });
   if (!t) notFound();
 
-  const { sectionOrder } = await getSettings();
+  const { sectionOrder, defaultTemplate } = await getSettings();
 
   return (
     <div className="space-y-4">
@@ -33,7 +33,7 @@ export default async function ResumeViewer({ params }: { params: Promise<{ tailo
       <SavedResumeView
         tailoredId={t.id}
         content={t.content as ResumeContent}
-        templateId={normalizeTemplate(t.templateId)}
+        templateId={normalizeTemplate(defaultTemplate)}
         order={sectionOrder}
         fitBefore={t.fitBefore}
         fitAfter={t.fitAfter}

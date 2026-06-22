@@ -6,10 +6,16 @@ export { SECTION_KEYS, SECTION_LABELS, parseSectionOrder } from "@/lib/sections"
 
 const ID = "global";
 
+export const TAILORING_MODELS = [
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 (recommended)" },
+  { id: "claude-opus-4-8", label: "Claude Opus 4.8 (highest quality)" },
+] as const;
+
 export type AppSettings = {
   customInstructions: string;
   sectionOrder: SectionKey[];
   defaultTemplate: string;
+  tailoringModel: string;
 };
 
 /** Load the singleton settings (returns defaults if not yet created). */
@@ -19,6 +25,7 @@ export async function getSettings(): Promise<AppSettings> {
     customInstructions: s?.customInstructions ?? "",
     sectionOrder: parseSectionOrder(s?.sectionOrder),
     defaultTemplate: s?.defaultTemplate ?? "modern",
+    tailoringModel: s?.tailoringModel ?? "claude-sonnet-4-6",
   };
 }
 

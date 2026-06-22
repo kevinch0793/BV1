@@ -1,8 +1,8 @@
-import { getSettings } from "@/lib/settings";
-import { updateSettings, updateDefaultTemplate } from "@/app/actions/settings";
+import { getSettings, TAILORING_MODELS } from "@/lib/settings";
+import { updateSettings, updateTailoringModel } from "@/app/actions/settings";
 import { DirtyForm } from "@/components/DirtyForm";
 import { SectionOrderEditor } from "@/components/SectionOrderEditor";
-import { TEMPLATES } from "@/components/templates";
+import { TemplateSettings } from "@/components/TemplateSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -43,23 +43,30 @@ export default async function SettingsPage() {
         </ul>
       </section>
 
-      {/* Default template */}
+      {/* Tailoring model */}
       <section className="rounded-xl border border-neutral-200 bg-white p-5">
-        <h2 className="text-lg font-semibold text-neutral-900">Default template</h2>
-        <p className="mb-3 text-xs text-neutral-500">
-          The template new resumes are tailored with, and the default selected in the dashboard and tailor pickers.
-        </p>
-        <DirtyForm action={updateDefaultTemplate} className="space-y-2">
+        <h2 className="text-lg font-semibold text-neutral-900">Tailoring model</h2>
+        <p className="mb-3 text-xs text-neutral-500">The Claude model used to tailor every resume. (Resume/JD parsing always uses a fast model.)</p>
+        <DirtyForm action={updateTailoringModel} className="space-y-2">
           <label className="flex flex-col gap-1 text-sm font-medium text-neutral-700">
-            Template
-            <select name="defaultTemplate" defaultValue={settings.defaultTemplate} className={`${input} max-w-xs`}>
-              {TEMPLATES.map((t) => (
-                <option key={t.id} value={t.id}>{t.label}: {t.description}</option>
+            Model
+            <select name="tailoringModel" defaultValue={settings.tailoringModel} className={`${input} max-w-xs`}>
+              {TAILORING_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
               ))}
             </select>
           </label>
-          <button data-save className={saveBtn}>Save template</button>
+          <button data-save className={saveBtn}>Save model</button>
         </DirtyForm>
+      </section>
+
+      {/* Default template + live preview */}
+      <section className="rounded-xl border border-neutral-200 bg-white p-5">
+        <h2 className="text-lg font-semibold text-neutral-900">Template</h2>
+        <p className="mb-3 text-xs text-neutral-500">
+          The template used for every resume — preview, download (PDF &amp; DOCX), and the dashboard Apply action. Changing it here applies everywhere.
+        </p>
+        <TemplateSettings initial={settings.defaultTemplate} order={settings.sectionOrder} />
       </section>
 
       {/* Layout — section ordering (drag & drop) */}

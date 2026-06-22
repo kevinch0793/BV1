@@ -2,11 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { startPipeline as start, isPipelineRunning, type PipelineOpts } from "@/lib/pipeline";
+import { getSettings } from "@/lib/settings";
+import { startPipeline as start, isPipelineRunning } from "@/lib/pipeline";
 
-/** Start (or refresh options of) the background fetch+tailor pipeline. */
-export async function startPipeline(profileId: string, opts: PipelineOpts): Promise<{ ok: true }> {
-  await start(profileId, opts);
+/**
+ * Start the background fetch+tailor pipeline. Template + model come from global
+ * Settings (custom instructions are applied inside tailoring), so the dashboard
+ * no longer carries per-run options.
+ */
+export async function startPipeline(profileId: string): Promise<{ ok: true }> {
+  const { defaultTemplate, tailoringModel } = await getSettings();
+  await start(profileId, { templateId: defaultTemplate, model: tailoringModel });
   return { ok: true };
 }
 

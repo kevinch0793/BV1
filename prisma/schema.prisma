@@ -17,6 +17,7 @@ model Settings {
   skillsPosition     String   @default("after") // legacy; superseded by sectionOrder
   sectionOrder       String   @default("summary,experience,skills,education") // resume section render order
   defaultTemplate    String   @default("modern") // default resume template id
+  tailoringModel     String   @default("claude-sonnet-4-6") // Claude model used for tailoring
   updatedAt          DateTime @updatedAt
 }
 

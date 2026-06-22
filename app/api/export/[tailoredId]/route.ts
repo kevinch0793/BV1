@@ -23,9 +23,13 @@ export async function GET(
 
   const url = new URL(req.url);
   const format = url.searchParams.get("format") === "docx" ? "docx" : "pdf";
-  const template = normalizeTemplate(url.searchParams.get("template") ?? t.templateId);
+  const settings = await getSettings();
+  // Template/order come from global Settings unless explicitly overridden (the
+  // viewer's live picker passes them); the saved templateId is not used so a
+  // Settings change applies to every existing resume too.
+  const template = normalizeTemplate(url.searchParams.get("template") ?? settings.defaultTemplate);
   const orderParam = url.searchParams.get("order");
-  const order = orderParam ? parseSectionOrder(orderParam) : (await getSettings()).sectionOrder;
+  const order = orderParam ? parseSectionOrder(orderParam) : settings.sectionOrder;
 
   const content = t.content as ResumeContent;
   const filename = `${safeName(content.name || "Resume")}${t.job?.company ? "_" + safeName(t.job.company) : ""}.${format}`;

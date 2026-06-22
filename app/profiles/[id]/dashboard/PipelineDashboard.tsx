@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { TEMPLATES, normalizeTemplate, type TemplateId } from "@/components/templates";
 import { addJobUrls, setJobFromText, deleteJob } from "@/app/actions/jobs";
 import { startPipeline, pipelineRunning, retryJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
@@ -19,11 +18,6 @@ type Job = {
   tailoredId: string | null;
   fitAfter: number | null;
 };
-
-const MODELS = [
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 (recommended)" },
-  { id: "claude-opus-4-8", label: "Claude Opus 4.8 (highest quality)" },
-];
 
 const input =
   "w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500";
@@ -58,22 +52,15 @@ export function PipelineDashboard({
   profileId,
   jobs,
   canTailor,
-  defaultTemplate,
 }: {
   profileId: string;
   jobs: Job[];
   canTailor: boolean;
-  defaultTemplate: string;
 }) {
   const router = useRouter();
   const [polling, setPolling] = useState(false);
   const [adding, startAdd] = useTransition();
   const [addMsg, setAddMsg] = useState<string | null>(null);
-
-  const [template, setTemplate] = useState<TemplateId>(normalizeTemplate(defaultTemplate));
-  const [model, setModel] = useState(MODELS[0].id);
-  const [instructions, setInstructions] = useState("");
-  const opts = { templateId: template, model, instructions };
 
   const outstanding = jobs.filter((j) => ["pending", "fetched"].includes(stageKey(j)));
 
@@ -112,7 +99,7 @@ export function PipelineDashboard({
   }, [polling, profileId, router]);
 
   async function kick() {
-    await startPipeline(profileId, opts);
+    await startPipeline(profileId);
     setPolling(true);
     router.refresh();
   }
@@ -162,25 +149,10 @@ export function PipelineDashboard({
           </div>
         </form>
 
-        {/* Settings */}
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <label className="flex flex-col gap-1 text-xs font-medium text-neutral-600">
-            Template
-            <select value={template} onChange={(e) => setTemplate(e.target.value as TemplateId)} className={input}>
-              {TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-medium text-neutral-600">
-            Tailoring model
-            <select value={model} onChange={(e) => setModel(e.target.value)} className={input}>
-              {MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-medium text-neutral-600">
-            Instructions (optional)
-            <input value={instructions} onChange={(e) => setInstructions(e.target.value)} className={input} placeholder="e.g. one page, emphasize leadership" />
-          </label>
-        </div>
+        <p className="mt-3 text-xs text-neutral-400">
+          Template, tailoring model, and custom instructions are configured in{" "}
+          <a href="/settings" className="text-sky-700 hover:underline">Settings</a>.
+        </p>
         {!canTailor && (
           <p className="mt-3 text-xs text-amber-600">Tailoring needs a base resume or a project on the profile — until then jobs will only be fetched.</p>
         )}
