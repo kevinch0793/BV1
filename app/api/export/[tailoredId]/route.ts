@@ -9,8 +9,11 @@ import type { ResumeContent } from "@/lib/llm/schema";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function safeName(s: string): string {
-  return s.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "resume";
+// "Alex Rivera" -> "Alex Rivera" (keep spaces; drop filesystem-illegal chars).
+// No company/JD in the name, so the file is the same each time and overwrites.
+function fileBase(name: string): string {
+  const cleaned = (name || "Resume").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+  return cleaned || "Resume";
 }
 
 export async function GET(
@@ -18,7 +21,7 @@ export async function GET(
   { params }: { params: Promise<{ tailoredId: string }> },
 ) {
   const { tailoredId } = await params;
-  const t = await prisma.tailoredResume.findUnique({ where: { id: tailoredId }, include: { job: true } });
+  const t = await prisma.tailoredResume.findUnique({ where: { id: tailoredId } });
   if (!t) return new NextResponse("Not found", { status: 404 });
 
   const url = new URL(req.url);
@@ -32,7 +35,7 @@ export async function GET(
   const order = orderParam ? parseSectionOrder(orderParam) : settings.sectionOrder;
 
   const content = t.content as ResumeContent;
-  const filename = `${safeName(content.name || "Resume")}${t.job?.company ? "_" + safeName(t.job.company) : ""}.${format}`;
+  const filename = `${fileBase(content.name)} Resume.${format}`;
 
   try {
     if (format === "docx") {
