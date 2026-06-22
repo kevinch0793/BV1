@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { TEMPLATES, type TemplateId } from "@/components/templates";
+import { TEMPLATES, normalizeTemplate, type TemplateId } from "@/components/templates";
 import { addJobUrls, setJobFromText, deleteJob } from "@/app/actions/jobs";
 import { startPipeline, pipelineRunning, retryJob } from "@/app/actions/pipeline";
+import { ResumePreviewModal } from "@/components/ResumePreviewModal";
+import { downloadResume } from "@/lib/exportClient";
 
 type Job = {
   id: string;
@@ -20,8 +21,8 @@ type Job = {
 };
 
 const MODELS = [
-  { id: "gpt-4o-mini", label: "GPT-4o mini" },
-  { id: "gpt-4o", label: "GPT-4o" },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 (recommended)" },
+  { id: "claude-opus-4-8", label: "Claude Opus 4.8 (highest quality)" },
 ];
 
 const input =
@@ -42,26 +43,47 @@ function stageKey(job: Job): keyof typeof STAGE {
   return "pending";
 }
 
+function isRemote(job: Job): boolean {
+  return (job.location ?? "").trim().toLowerCase() === "remote";
+}
+
+// Display order: Fetchable+Remote first, then Fetchable+Onsite, then Unfetchable.
+// (Unfetchable = a job that failed to fetch its description.)
+function sortRank(job: Job): number {
+  if (stageKey(job) === "failed") return 2;
+  return isRemote(job) ? 0 : 1;
+}
+
 export function PipelineDashboard({
   profileId,
   jobs,
   canTailor,
+  defaultTemplate,
 }: {
   profileId: string;
   jobs: Job[];
   canTailor: boolean;
+  defaultTemplate: string;
 }) {
   const router = useRouter();
   const [polling, setPolling] = useState(false);
   const [adding, startAdd] = useTransition();
   const [addMsg, setAddMsg] = useState<string | null>(null);
 
-  const [template, setTemplate] = useState<TemplateId>("classic");
+  const [template, setTemplate] = useState<TemplateId>(normalizeTemplate(defaultTemplate));
   const [model, setModel] = useState(MODELS[0].id);
   const [instructions, setInstructions] = useState("");
   const opts = { templateId: template, model, instructions };
 
   const outstanding = jobs.filter((j) => ["pending", "fetched"].includes(stageKey(j)));
+
+  // Re-sort whenever job data changes (incl. after tailoring status updates from
+  // polling): Fetchable+Remote → Fetchable+Onsite → Unfetchable. Stable within a
+  // group (preserves the server's reverse-chronological order).
+  const sortedJobs = useMemo(
+    () => jobs.map((j, i) => [j, i] as const).sort(([a, ai], [b, bi]) => sortRank(a) - sortRank(b) || ai - bi).map(([j]) => j),
+    [jobs],
+  );
 
   // Resume the progress view if the pipeline is already running server-side
   // (e.g. after navigating back to this page).
@@ -183,7 +205,7 @@ export function PipelineDashboard({
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
-                {jobs.map((j) => (
+                {sortedJobs.map((j) => (
                   <JobRow
                     key={j.id}
                     job={j}
@@ -213,6 +235,8 @@ function JobRow({
   onPasted: () => void;
 }) {
   const [showPaste, setShowPaste] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [pending, start] = useTransition();
   const [pasteErr, setPasteErr] = useState<string | null>(null);
 
@@ -220,6 +244,22 @@ function JobRow({
   const st = STAGE[stage];
   const busy = stage === "fetching" || stage === "tailoring";
   const canPaste = stage === "pending" || stage === "failed";
+
+  // "Apply": open the job posting AND download the tailored resume in one click,
+  // so you can start the application with the resume in hand. Open the JD first
+  // (synchronous, so the popup isn't blocked), then fetch the download.
+  async function apply() {
+    if (job.url) window.open(job.url, "_blank", "noopener,noreferrer");
+    if (!job.tailoredId) return;
+    setApplying(true);
+    try {
+      await downloadResume(job.tailoredId, "pdf");
+    } catch (e) {
+      alert(`Resume download failed: ${e instanceof Error ? e.message : "unknown error"}`);
+    } finally {
+      setApplying(false);
+    }
+  }
 
   return (
     <>
@@ -238,7 +278,18 @@ function JobRow({
         <td className="px-4 py-3 text-neutral-700">{job.location || <span className="text-neutral-400">—</span>}</td>
         <td className="px-4 py-3">
           {job.url ? (
-            <a href={job.url} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline">link ↗</a>
+            job.tailoredId ? (
+              <button
+                onClick={apply}
+                disabled={applying}
+                title="Open the job posting and download your tailored resume"
+                className="font-medium text-sky-700 hover:underline disabled:opacity-50"
+              >
+                {applying ? "Opening…" : "Apply ↗"}
+              </button>
+            ) : (
+              <a href={job.url} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline">link ↗</a>
+            )
           ) : (
             <span className="text-neutral-400">—</span>
           )}
@@ -251,7 +302,7 @@ function JobRow({
               </span>
             )}
             {job.tailoredId && (
-              <Link href={`/resume/${job.tailoredId}`} className="font-medium text-sky-700 hover:underline">Resume</Link>
+              <button onClick={() => setShowPreview(true)} className="font-medium text-sky-700 hover:underline">Resume</button>
             )}
             {stage === "failed" && job.url && (
               <button onClick={() => onRetry(job.id)} className="text-sky-700 hover:underline">Retry</button>
@@ -294,6 +345,9 @@ function JobRow({
             </form>
           </td>
         </tr>
+      )}
+      {showPreview && job.tailoredId && (
+        <ResumePreviewModal tailoredId={job.tailoredId} onClose={() => setShowPreview(false)} />
       )}
     </>
   );

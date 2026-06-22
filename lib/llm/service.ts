@@ -1,4 +1,7 @@
-import { generateStructuredOpenAI, OPENAI_TAILOR_MODEL } from "@/lib/llm/openai";
+import { generateStructuredOpenAI } from "@/lib/llm/openai";
+import { generateStructured, DEFAULT_MODEL as CLAUDE_TAILOR_MODEL } from "@/lib/llm/anthropic";
+import { getCustomInstructions } from "@/lib/settings";
+import { deepStripDashes } from "@/lib/sanitize";
 import {
   JobFieldsSchema,
   ParsedProfileSchema,
@@ -65,26 +68,34 @@ export async function tailorResume(args: {
   instructions?: string;
   model?: string;
 }): Promise<ResumeContent> {
+  // Global custom instructions (Settings) apply to every tailoring, layered
+  // with any per-job instructions.
+  const global = await getCustomInstructions();
+  const instructions = [global, args.instructions].map((s) => s?.trim()).filter(Boolean).join("\n\n") || undefined;
+
   const built =
     args.mode === "with_base" && args.baseResume?.trim()
       ? buildTailorWithBasePrompt({
           profile: args.profile,
           job: args.job,
           baseResume: args.baseResume,
-          instructions: args.instructions,
+          instructions,
         })
       : buildFromScratchPrompt({
           profile: args.profile,
           job: args.job,
-          instructions: args.instructions,
+          instructions,
         });
 
-  return generateStructuredOpenAI({
+  // Tailoring runs on Claude (extraction stays on OpenAI). Claude follows the
+  // volume/format guidelines (4-7 bullets/subgroup, no cliché openers) reliably.
+  const content = await generateStructured({
     schema: ResumeContentSchema,
-    schemaName: "resume",
     system: built.system,
     prompt: built.prompt,
-    model: args.model ?? OPENAI_TAILOR_MODEL,
-    maxTokens: 8000,
+    model: args.model ?? CLAUDE_TAILOR_MODEL,
+    maxTokens: 16000,
   });
+  // Normalize en/em dashes to plain hyphens (humans don't type the long ones).
+  return deepStripDashes(content);
 }

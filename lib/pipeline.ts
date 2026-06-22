@@ -162,7 +162,7 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
         data: {
           profileId: job.profileId,
           jobPostingId: jobId,
-          templateId: opts.templateId ?? "classic",
+          templateId: opts.templateId ?? "modern",
           mode,
           instructions: opts.instructions || null,
           content,

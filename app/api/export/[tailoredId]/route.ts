@@ -1,0 +1,55 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { getSettings, parseSectionOrder } from "@/lib/settings";
+import { normalizeTemplate } from "@/components/templates";
+import { buildResumeDocx } from "@/lib/export/docx";
+import { renderResumePdf } from "@/lib/export/pdf";
+import type { ResumeContent } from "@/lib/llm/schema";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+function safeName(s: string): string {
+  return s.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "resume";
+}
+
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ tailoredId: string }> },
+) {
+  const { tailoredId } = await params;
+  const t = await prisma.tailoredResume.findUnique({ where: { id: tailoredId }, include: { job: true } });
+  if (!t) return new NextResponse("Not found", { status: 404 });
+
+  const url = new URL(req.url);
+  const format = url.searchParams.get("format") === "docx" ? "docx" : "pdf";
+  const template = normalizeTemplate(url.searchParams.get("template") ?? t.templateId);
+  const orderParam = url.searchParams.get("order");
+  const order = orderParam ? parseSectionOrder(orderParam) : (await getSettings()).sectionOrder;
+
+  const content = t.content as ResumeContent;
+  const filename = `${safeName(content.name || "Resume")}${t.job?.company ? "_" + safeName(t.job.company) : ""}.${format}`;
+
+  try {
+    if (format === "docx") {
+      const buf = await buildResumeDocx(content, order);
+      return new NextResponse(new Uint8Array(buf), {
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "Content-Disposition": `attachment; filename="${filename}"`,
+        },
+      });
+    }
+
+    const printUrl = `${url.origin}/print/${tailoredId}?template=${encodeURIComponent(template)}&order=${encodeURIComponent(order.join(","))}`;
+    const buf = await renderResumePdf(printUrl);
+    return new NextResponse(new Uint8Array(buf), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+      },
+    });
+  } catch (e) {
+    return new NextResponse(`Export failed: ${e instanceof Error ? e.message : "unknown"}`, { status: 500 });
+  }
+}

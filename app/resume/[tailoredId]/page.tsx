@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getSettings } from "@/lib/settings";
 import { SavedResumeView } from "./SavedResumeView";
 import type { ResumeContent } from "@/lib/llm/schema";
-import type { TemplateId } from "@/components/templates";
+import { normalizeTemplate } from "@/components/templates";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,8 @@ export default async function ResumeViewer({ params }: { params: Promise<{ tailo
     include: { job: true },
   });
   if (!t) notFound();
+
+  const { sectionOrder } = await getSettings();
 
   return (
     <div className="space-y-4">
@@ -28,8 +31,10 @@ export default async function ResumeViewer({ params }: { params: Promise<{ tailo
         )}
       </div>
       <SavedResumeView
+        tailoredId={t.id}
         content={t.content as ResumeContent}
-        templateId={t.templateId as TemplateId}
+        templateId={normalizeTemplate(t.templateId)}
+        order={sectionOrder}
         fitBefore={t.fitBefore}
         fitAfter={t.fitAfter}
         fitDetail={t.fitDetail as FitDetail | null}

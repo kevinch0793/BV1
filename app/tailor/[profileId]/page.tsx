@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { getSettings } from "@/lib/settings";
 import { TailorWorkspace } from "./TailorWorkspace";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,8 @@ export default async function TailorPage({ params }: { params: Promise<{ profile
   });
   if (!profile) notFound();
 
+  const { sectionOrder, defaultTemplate } = await getSettings();
+
   return (
     <div className="space-y-4">
       <div>
@@ -29,6 +32,8 @@ export default async function TailorPage({ params }: { params: Promise<{ profile
         profileId={profile.id}
         hasBaseResume={!!profile.baseResume}
         projectCount={profile._count.experiences}
+        order={sectionOrder}
+        defaultTemplate={defaultTemplate}
         jobs={profile.jobs.map((j) => ({
           id: j.id,
           label: `${j.role || "Role?"} · ${j.company || "Company?"}`,

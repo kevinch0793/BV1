@@ -5,8 +5,10 @@ import { prisma } from "@/lib/db";
 import { profileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { tailorResume } from "@/lib/llm/service";
 import { computeFit, profileToText } from "@/lib/llm/ats";
+import { getSettings } from "@/lib/settings";
 import type { ResumeContent } from "@/lib/llm/schema";
 import type { JobForLLM } from "@/lib/llm/prompts";
+import type { SectionKey } from "@/lib/sections";
 
 export type TailorResult =
   | { ok: true; content: ResumeContent }
@@ -62,6 +64,16 @@ export async function generateTailored(args: {
   }
 }
 
+/** Fetch a saved tailored resume for the in-table preview modal. */
+export async function previewTailored(
+  tailoredId: string,
+): Promise<{ content: ResumeContent; template: string; order: SectionKey[] } | null> {
+  const t = await prisma.tailoredResume.findUnique({ where: { id: tailoredId } });
+  if (!t) return null;
+  const { sectionOrder } = await getSettings();
+  return { content: t.content as ResumeContent, template: t.templateId, order: sectionOrder };
+}
+
 export async function saveTailored(args: {
   profileId: string;
   jobId?: string;
@@ -86,7 +98,7 @@ export async function saveTailored(args: {
 }
 
 export async function deleteTailored(id: string) {
-  await prisma.tailoredResume.delete({ where: { id } });
+  await prisma.tailoredResume.deleteMany({ where: { id } });
   revalidatePath("/");
 }
 
@@ -149,7 +161,7 @@ export async function autoTailorJob(
       data: {
         profileId: job.profileId,
         jobPostingId: jobId,
-        templateId: opts?.templateId ?? "classic",
+        templateId: opts?.templateId ?? "modern",
         mode,
         instructions: opts?.instructions || null,
         content,

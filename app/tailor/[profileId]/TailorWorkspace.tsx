@@ -2,12 +2,13 @@
 
 import { useMemo, useState, useTransition } from "react";
 import type { ResumeContent } from "@/lib/llm/schema";
-import { ResumePreview, TEMPLATES, type TemplateId } from "@/components/templates";
+import { ResumePreview, TEMPLATES, normalizeTemplate, type TemplateId } from "@/components/templates";
+import type { SectionKey } from "@/lib/sections";
 import { generateTailored, saveTailored } from "@/app/actions/tailor";
 
 const MODELS = [
-  { id: "gpt-4o-mini", label: "GPT-4o mini (fast, default)" },
-  { id: "gpt-4o", label: "GPT-4o (higher quality)" },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 (recommended)" },
+  { id: "claude-opus-4-8", label: "Claude Opus 4.8 (highest quality)" },
 ];
 
 const input =
@@ -21,15 +22,19 @@ export function TailorWorkspace({
   hasBaseResume,
   projectCount,
   jobs,
+  order,
+  defaultTemplate,
 }: {
   profileId: string;
   hasBaseResume: boolean;
   projectCount: number;
   jobs: { id: string; label: string }[];
+  order: SectionKey[];
+  defaultTemplate: string;
 }) {
   const [mode, setMode] = useState<Mode>(hasBaseResume ? "with_base" : "from_scratch");
   const [jobId, setJobId] = useState<string>(jobs[0]?.id ?? "");
-  const [template, setTemplate] = useState<TemplateId>("classic");
+  const [template, setTemplate] = useState<TemplateId>(normalizeTemplate(defaultTemplate));
   const [model, setModel] = useState(MODELS[0].id);
   const [instructions, setInstructions] = useState("");
 
@@ -164,7 +169,7 @@ export function TailorWorkspace({
         {cleaned ? (
           <div className="overflow-x-auto">
             <div className="print-sheet mx-auto">
-              <ResumePreview content={cleaned} template={template} />
+              <ResumePreview content={cleaned} template={template} order={order} />
             </div>
           </div>
         ) : (

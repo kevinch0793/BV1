@@ -10,6 +10,16 @@ datasource db {
   provider = "sqlite"
 }
 
+/// Singleton app settings (id is always "global").
+model Settings {
+  id                 String   @id @default("global")
+  customInstructions String? // extra global guidance appended to every tailoring
+  skillsPosition     String   @default("after") // legacy; superseded by sectionOrder
+  sectionOrder       String   @default("summary,experience,skills,education") // resume section render order
+  defaultTemplate    String   @default("modern") // default resume template id
+  updatedAt          DateTime @updatedAt
+}
+
 /// A distinct identity used to generate resumes (name, contact, history).
 model Profile {
   id        String   @id @default(cuid())

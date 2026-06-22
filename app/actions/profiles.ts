@@ -63,7 +63,7 @@ export async function updateProfileBasics(profileId: string, formData: FormData)
 }
 
 export async function deleteProfile(profileId: string) {
-  await prisma.profile.delete({ where: { id: profileId } });
+  await prisma.profile.deleteMany({ where: { id: profileId } });
   redirect("/profiles");
 }
 
@@ -94,7 +94,7 @@ export async function updateExperience(id: string, profileId: string, formData: 
 }
 
 export async function deleteExperience(id: string, profileId: string) {
-  await prisma.experience.delete({ where: { id } });
+  await prisma.experience.deleteMany({ where: { id } });
   revalidatePath(`/profiles/${profileId}`);
 }
 
@@ -122,7 +122,7 @@ export async function updateEducation(id: string, profileId: string, formData: F
 }
 
 export async function deleteEducation(id: string, profileId: string) {
-  await prisma.education.delete({ where: { id } });
+  await prisma.education.deleteMany({ where: { id } });
   revalidatePath(`/profiles/${profileId}`);
 }
 

@@ -46,8 +46,9 @@ function serializeProfile(p: ProfileForLLM): string {
   if (p.email) lines.push(`Email: ${p.email}`);
   if (p.phone) lines.push(`Phone: ${p.phone}`);
   if (p.location) lines.push(`Location: ${p.location}`);
-  if (p.links && Object.keys(p.links).length) {
-    lines.push(`Links: ${Object.entries(p.links).map(([k, v]) => `${k}: ${v}`).join(", ")}`);
+  if (p.links) {
+    const links = Object.entries(p.links).filter(([, v]) => v && v.trim());
+    if (links.length) lines.push(`Links: ${links.map(([k, v]) => `${k}: ${v}`).join(", ")}`);
   }
   if (p.summary) lines.push(`\nSummary: ${p.summary}`);
 
@@ -104,6 +105,26 @@ const TAILORING_RULES = `Rules:
 - NEVER fabricate employers, job titles, dates, degrees, or specific numeric metrics that aren't supported. You MAY add JD skills/keywords and rephrase; you may NOT invent facts of record.
 - Keep it truthful, concise, and ATS-friendly. Fill every schema field; use empty strings/arrays where a section genuinely has no content.`;
 
+// Default resume best-practices (2026). Applied to every tailoring on top of the
+// rules above; the user's Settings custom instructions and any per-job
+// instructions layer on after these.
+const RESUME_GUIDELINES = `Resume best-practices (apply by default):
+- HEADLINE (the resume "title"): keep it simple — just the role, e.g. "Software Engineer", "AI Software Engineer", or "AI Engineer". Choose the one that best fits the JD. No long pipe-delimited taglines.
+- CONTACT: include the contact details that are provided (email, phone, location). Only include LinkedIn / GitHub / portfolio links that actually exist in the source — never invent URLs, and omit any link that isn't provided.
+- SUMMARY: a focused paragraph, neither one terse line nor a wall of text (about 2-4 sentences). Do NOT open with a generic self-adjective such as "Results-oriented", "Detail-oriented", "Dedicated", "Passionate", "Motivated", "Hardworking", or "Seasoned" — start directly with the concrete role/specialty (e.g. "Machine Learning Engineer with…"). You MUST explicitly mention working in Agile teams and using AI development tools (name them, e.g. Claude / Copilot) — include these every time regardless of the JD — and align the rest tightly with what the JD requires.
+- SKILLS: group into categories; each category lists 5-8 concrete, JD-relevant skills. ALWAYS include Agile/collaboration skills and AI dev tools (e.g. Claude, GitHub Copilot CLI). Pinpoint specific stacks/tools — not vague umbrella terms.
+- BULLETS — minimum counts are mandatory, not suggestions:
+  • The most recent / most JD-relevant roles: each subgroup MUST have AT LEAST 4 bullets (aim 4-7). Do NOT stop at 2-3.
+  • Older / less-relevant roles: AT LEAST 2 bullets each (3 preferred). Never zero.
+  • EVERY company must show bullets. If a company has no subgroups, or a subgroup with no source bullets, create one subgroup and write role-appropriate bullets grounded in that job's title, seniority, and the JD's skills — an empty company is unacceptable.
+  Expand thin source into concrete, JD-aligned bullets (elaborate plausibly on the real role; never invent employers, titles, dates, degrees, or fabricated numeric metrics). Put specific numbers/metrics in only ONE bullet per subgroup; keep the rest concrete but unquantified. Strong, varied action verbs. Keep the whole resume to 1-2 pages.
+- AI DEV TOOLS: mention AI coding tools (Claude Code / Copilot CLI) ONLY in the MOST RECENT (top) company — these tools are new, so they don't belong in older roles. You MUST include a bullet there stating you "Used Claude Code / Copilot CLI in <specific work>". Do NOT reference these tools in any earlier company/project.
+- AGILE: Agile / team collaboration has existed for a long time — weave it in naturally wherever it fits across companies and projects, not just the most recent one.
+- REMOTE READINESS: it's enough to show remote / distributed-work evidence in the most recent company.
+- LANGUAGE: never use AI-sounding words or patterns, and never use filler opener adjectives like "Results-oriented", "Detail-oriented", "Dedicated", "Passionate", "Hardworking", "Seasoned", "leveraged cutting-edge solutions", "passionate about innovation", "results-driven professional", or "transformed workflows through synergy". Keep it specific and human while staying ATS-friendly (mirror real JD keywords).
+- PUNCTUATION: use ONLY the plain hyphen "-". NEVER use an en dash "–" or em dash "—" anywhere (not in sentences, ranges, or separators) — they read as machine-written. Rewrite the sentence or use a hyphen, comma, or parentheses instead.
+- Keep it ATS-friendly, 1-2 pages.`;
+
 // 1) Extraction — raw page text/HTML → JobFields
 export function buildExtractionPrompt(rawText: string) {
   const clipped = rawText.slice(0, 60000);
@@ -124,7 +145,7 @@ export function buildTailorWithBasePrompt(args: {
   instructions?: string;
 }) {
   return {
-    system: `You are an expert resume writer. You tailor an existing resume to a specific job description, producing a structured resume. ${TAILORING_RULES}`,
+    system: `You are an expert resume writer. You tailor an existing resume to a specific job description, producing a structured resume. ${TAILORING_RULES}\n\n${RESUME_GUIDELINES}`,
     prompt: [
       `# Job description\n${serializeJob(args.job)}`,
       `# Candidate profile (supplementary facts)\n${serializeProfile(args.profile)}`,
@@ -144,7 +165,7 @@ export function buildFromScratchPrompt(args: {
   instructions?: string;
 }) {
   return {
-    system: `You are an expert resume writer. You build a tailored resume from a candidate's structured profile when no base resume exists. ${TAILORING_RULES}\n- Each company's project subgroups (name + kind) are authoritative anchors — keep them, and expand each subgroup's bullets into JD-aligned, achievement-oriented points without inventing the underlying facts.`,
+    system: `You are an expert resume writer. You build a tailored resume from a candidate's structured profile when no base resume exists. ${TAILORING_RULES}\n- Each company's project subgroups (name + kind) are authoritative anchors — keep them, and expand each subgroup's bullets into JD-aligned, achievement-oriented points without inventing the underlying facts.\n\n${RESUME_GUIDELINES}`,
     prompt: [
       `# Job description\n${serializeJob(args.job)}`,
       `# Candidate profile\n${serializeProfile(args.profile)}`,
