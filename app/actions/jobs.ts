@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { findJobDescription } from "@/lib/scrape/fetchHtml";
 import { extractJobFields } from "@/lib/llm/service";
+import { assertOwnsProfile, assertOwnsJob } from "@/lib/owner";
 
 export type JobActionResult = { ok: boolean; error?: string; needsPaste?: boolean };
 
@@ -22,6 +23,7 @@ export async function addJobUrls(
   profileId: string,
   formData: FormData,
 ): Promise<{ ok: boolean; added: number; created: { id: string; url: string | null }[]; error?: string }> {
+  await assertOwnsProfile(profileId);
   const urls = normalizeUrls(String(formData.get("urls") ?? ""));
   if (urls.length === 0) return { ok: false, added: 0, created: [], error: "Enter at least one URL." };
 
@@ -49,6 +51,7 @@ export async function addJobUrls(
 
 /** Scrape + extract a single job. Called one-at-a-time by the queue. */
 export async function fetchJob(jobId: string): Promise<JobActionResult> {
+  await assertOwnsJob(jobId);
   const job = await prisma.jobPosting.findUnique({ where: { id: jobId } });
   if (!job) return { ok: false, error: "Job not found." };
   if (!job.url) return { ok: false, error: "No URL on this job." };
@@ -90,6 +93,7 @@ export async function addJobFromText(
   profileId: string,
   formData: FormData,
 ): Promise<JobActionResult> {
+  await assertOwnsProfile(profileId);
   const text = String(formData.get("text") ?? "").trim();
   const url = String(formData.get("url") ?? "").trim() || null;
   if (text.length < 50) return { ok: false, error: "Paste the full job description." };
@@ -120,6 +124,7 @@ export async function setJobFromText(
   jobId: string,
   formData: FormData,
 ): Promise<JobActionResult> {
+  await assertOwnsJob(jobId);
   const text = String(formData.get("text") ?? "").trim();
   if (text.length < 50) return { ok: false, error: "Paste the full job description." };
   const job = await prisma.jobPosting.findUnique({ where: { id: jobId } });
@@ -147,9 +152,10 @@ export async function setJobFromText(
 }
 
 export async function deleteJob(id: string, profileId: string) {
+  await assertOwnsProfile(profileId);
   // deleteMany is idempotent — no error if the row was already removed (e.g. a
   // double-click or stale view). The tailored resume is removed via DB cascade.
-  await prisma.jobPosting.deleteMany({ where: { id } });
+  await prisma.jobPosting.deleteMany({ where: { id, profileId } });
   revalidatePath(`/profiles/${profileId}/dashboard`);
   revalidatePath("/");
 }
@@ -163,8 +169,9 @@ export type ApplyStatus = "none" | "applied" | "not_available";
  * downloads it; a manual "applied" defaults to false and can be toggled).
  */
 export async function setApplyStatus(id: string, status: ApplyStatus, usedTailored = false) {
+  const clientId = await assertOwnsJob(id);
   await prisma.jobPosting.updateMany({
-    where: { id },
+    where: { id, profile: { clientId } },
     data: {
       applyStatus: status,
       appliedAt: status === "applied" ? new Date() : null,

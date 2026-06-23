@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { ownedByProfileWhere } from "@/lib/owner";
 import { CalendarView, type DayEntry } from "@/components/CalendarView";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   // Only count real job applications (tailored resumes tied to an existing job),
   // and at most one per job, so the calendar reflects what actually exists.
   const tailored = await prisma.tailoredResume.findMany({
-    where: { createdAt: { gte: start, lt: end }, jobPostingId: { not: null } },
+    where: { ...(await ownedByProfileWhere()), createdAt: { gte: start, lt: end }, jobPostingId: { not: null } },
     orderBy: { createdAt: "asc" },
     include: {
       profile: { select: { id: true, fullName: true } },

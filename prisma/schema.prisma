@@ -10,10 +10,27 @@ datasource db {
   provider = "sqlite"
 }
 
-/// Singleton app settings (id is always "global").
+/// A tenant account. Clients self-register (status "pending") and an admin
+/// approves them before they can log in. There is one seeded admin.
+model Client {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  role         String    @default("client") // "admin" | "client"
+  status       String    @default("pending") // "pending" | "approved" | "rejected"
+  createdAt    DateTime  @default(now())
+  approvedAt   DateTime?
+
+  profiles Profile[]
+  settings Settings?
+}
+
+/// Per-client app settings (one row per Client).
 model Settings {
-  id                 String   @id @default("global")
-  customInstructions String? // extra global guidance appended to every tailoring
+  id                 String   @id @default(cuid())
+  clientId           String   @unique
+  client             Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  customInstructions String? // extra guidance appended to every tailoring
   skillsPosition     String   @default("after") // legacy; superseded by sectionOrder
   sectionOrder       String   @default("summary,experience,skills,education") // resume section render order
   defaultTemplate    String   @default("modern") // default resume template id
@@ -24,6 +41,8 @@ model Settings {
 /// A distinct identity used to generate resumes (name, contact, history).
 model Profile {
   id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   label     String // e.g. "ML Engineer", "Eng Manager"
   fullName  String
   email     String?

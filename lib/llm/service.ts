@@ -1,6 +1,5 @@
 import { generateStructuredOpenAI } from "@/lib/llm/openai";
 import { generateStructured, DEFAULT_MODEL as CLAUDE_TAILOR_MODEL } from "@/lib/llm/anthropic";
-import { getCustomInstructions } from "@/lib/settings";
 import { deepStripDashes } from "@/lib/sanitize";
 import {
   JobFieldsSchema,
@@ -65,13 +64,16 @@ export async function tailorResume(args: {
   profile: ProfileForLLM;
   job: JobForLLM;
   baseResume?: string;
+  /** Per-job instructions (from the tailor UI). */
   instructions?: string;
+  /** The client's global custom instructions (resolved by the caller). */
+  customInstructions?: string;
   model?: string;
 }): Promise<ResumeContent> {
-  // Global custom instructions (Settings) apply to every tailoring, layered
+  // The client's global custom instructions apply to every tailoring, layered
   // with any per-job instructions.
-  const global = await getCustomInstructions();
-  const instructions = [global, args.instructions].map((s) => s?.trim()).filter(Boolean).join("\n\n") || undefined;
+  const instructions =
+    [args.customInstructions, args.instructions].map((s) => s?.trim()).filter(Boolean).join("\n\n") || undefined;
 
   const built =
     args.mode === "with_base" && args.baseResume?.trim()

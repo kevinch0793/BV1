@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { profileWhere } from "@/lib/owner";
 import { PipelineDashboard } from "./PipelineDashboard";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfileDashboard({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const profile = await prisma.profile.findUnique({
-    where: { id },
+  const profile = await prisma.profile.findFirst({
+    where: { id, ...(await profileWhere()) },
     include: {
       baseResume: { select: { id: true } },
       jobs: { orderBy: { createdAt: "desc" } },

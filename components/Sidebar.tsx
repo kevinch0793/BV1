@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { logout } from "@/app/actions/auth";
 
 const items = [
   {
@@ -33,32 +34,59 @@ const items = [
   },
 ];
 
-export function Sidebar() {
+const adminIcon = (
+  <>
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M22 11l-3 3-1.5-1.5" />
+  </>
+);
+
+export function Sidebar({ isAdmin, clientEmail }: { isAdmin: boolean; clientEmail: string }) {
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  const linkCls = (href: string) =>
+    `flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
+      isActive(href) ? "bg-sky-50 font-medium text-sky-800" : "text-neutral-600 hover:bg-neutral-100"
+    }`;
 
   return (
-    <aside className="no-print border-b border-neutral-200 bg-white md:sticky md:top-0 md:h-screen md:w-56 md:shrink-0 md:self-start md:border-b-0 md:border-r">
+    <aside className="no-print flex flex-col border-b border-neutral-200 bg-white md:sticky md:top-0 md:h-screen md:w-56 md:shrink-0 md:self-start md:border-b-0 md:border-r">
       <div className="flex items-center gap-2 px-5 py-4 font-semibold text-neutral-900">
         <span className="grid h-7 w-7 place-items-center rounded-md bg-sky-700 text-sm text-white">R</span>
         Tailored Resume
       </div>
       <nav className="flex gap-1 px-3 pb-3 md:flex-col">
         {items.map((it) => (
-          <Link
-            key={it.href}
-            href={it.href}
-            className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
-              isActive(it.href) ? "bg-sky-50 font-medium text-sky-800" : "text-neutral-600 hover:bg-neutral-100"
-            }`}
-          >
+          <Link key={it.href} href={it.href} className={linkCls(it.href)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               {it.icon}
             </svg>
             {it.label}
           </Link>
         ))}
+
+        {isAdmin && (
+          <>
+            <div className="mt-3 px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Admin</div>
+            <Link href="/admin/clients" className={linkCls("/admin/clients")}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                {adminIcon}
+              </svg>
+              Clients
+            </Link>
+          </>
+        )}
       </nav>
+
+      <div className="mt-auto border-t border-neutral-200 p-3 md:block">
+        <div className="truncate px-2 pb-2 text-xs text-neutral-400" title={clientEmail}>{clientEmail}</div>
+        <form action={logout}>
+          <button className="w-full rounded-md px-3 py-2 text-left text-sm text-neutral-600 hover:bg-neutral-100">
+            Sign out
+          </button>
+        </form>
+      </div>
     </aside>
   );
 }

@@ -65,8 +65,6 @@ export function PipelineDashboard({
   const [adding, startAdd] = useTransition();
   const [addMsg, setAddMsg] = useState<string | null>(null);
 
-  const outstanding = jobs.filter((j) => ["pending", "fetched"].includes(stageKey(j)));
-
   // Re-sort whenever job data changes (incl. after tailoring status updates from
   // polling): Fetchable+Remote → Fetchable+Onsite → Unfetchable. Stable within a
   // group (preserves the server's reverse-chronological order).
@@ -134,14 +132,6 @@ export function PipelineDashboard({
           <div className="flex flex-wrap items-center gap-3">
             <button disabled={adding} className="rounded-md bg-sky-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-800 disabled:opacity-50">
               {adding ? "Adding…" : "Add & run"}
-            </button>
-            <button
-              type="button"
-              onClick={kick}
-              disabled={outstanding.length === 0}
-              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-50"
-            >
-              Run pipeline ({outstanding.length})
             </button>
             {polling && (
               <span className="inline-flex items-center gap-2 text-sm text-sky-700">

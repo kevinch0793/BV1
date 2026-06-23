@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSettings, parseSectionOrder } from "@/lib/settings";
+import { getCurrentClient } from "@/lib/auth";
 import { normalizeTemplate } from "@/components/templates";
 import { buildResumeDocx } from "@/lib/export/docx";
 import { renderResumePdf } from "@/lib/export/pdf";
@@ -15,12 +16,19 @@ export async function GET(
   { params }: { params: Promise<{ tailoredId: string }> },
 ) {
   const { tailoredId } = await params;
-  const t = await prisma.tailoredResume.findUnique({ where: { id: tailoredId }, include: { job: true } });
+  // Authoritative auth check — the browser fetch sends same-origin cookies.
+  const client = await getCurrentClient();
+  if (!client) return new NextResponse("Unauthorized", { status: 401 });
+  // Admins can export any resume; clients only their own.
+  const t = await prisma.tailoredResume.findFirst({
+    where: client.role === "admin" ? { id: tailoredId } : { id: tailoredId, profile: { clientId: client.id } },
+    include: { job: true, profile: { select: { clientId: true } } },
+  });
   if (!t) return new NextResponse("Not found", { status: 404 });
 
   const url = new URL(req.url);
   const format = url.searchParams.get("format") === "docx" ? "docx" : "pdf";
-  const settings = await getSettings();
+  const settings = await getSettings(t.profile.clientId);
   // Template/order come from global Settings unless explicitly overridden (the
   // viewer's live picker passes them); the saved templateId is not used so a
   // Settings change applies to every existing resume too.

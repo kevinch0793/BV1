@@ -18,11 +18,18 @@ export default async function PrintPage({
 }) {
   const { tailoredId } = await params;
   const sp = await searchParams;
-  const t = await prisma.tailoredResume.findUnique({ where: { id: tailoredId } });
+  // No auth here: headless Chrome fetches this page cookieless during PDF export.
+  // Settings are resolved from the resume's OWNER (not a cookie) so the order is
+  // correct regardless of who/what is rendering. The PDF download path
+  // (/api/export) enforces ownership; this is render-only HTML.
+  const t = await prisma.tailoredResume.findUnique({
+    where: { id: tailoredId },
+    include: { profile: { select: { clientId: true } } },
+  });
   if (!t) notFound();
 
   const template = normalizeTemplate(sp.template ?? t.templateId);
-  const order = sp.order ? parseSectionOrder(sp.order) : (await getSettings()).sectionOrder;
+  const order = sp.order ? parseSectionOrder(sp.order) : (await getSettings(t.profile.clientId)).sectionOrder;
 
   return (
     <div className="print-sheet mx-auto">

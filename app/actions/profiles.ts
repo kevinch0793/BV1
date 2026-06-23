@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { parseResume } from "@/lib/llm/service";
+import { requireClient } from "@/lib/auth";
+import { assertOwnsProfile } from "@/lib/owner";
 
 const str = (v: FormDataEntryValue | null) => String(v ?? "").trim();
 const orNull = (v: FormDataEntryValue | null) => str(v) || null;
@@ -33,8 +35,10 @@ function parseProjects(v: FormDataEntryValue | null): ProjectGroup[] {
 // ---- Profile ----------------------------------------------------------------
 
 export async function createProfile(formData: FormData) {
+  const { id: clientId } = await requireClient();
   const profile = await prisma.profile.create({
     data: {
+      clientId,
       label: str(formData.get("label")) || "Untitled profile",
       fullName: str(formData.get("fullName")) || "New Profile",
     },
@@ -43,6 +47,7 @@ export async function createProfile(formData: FormData) {
 }
 
 export async function updateProfileBasics(profileId: string, formData: FormData) {
+  await assertOwnsProfile(profileId);
   await prisma.profile.update({
     where: { id: profileId },
     data: {
@@ -63,13 +68,15 @@ export async function updateProfileBasics(profileId: string, formData: FormData)
 }
 
 export async function deleteProfile(profileId: string) {
-  await prisma.profile.deleteMany({ where: { id: profileId } });
+  const clientId = await assertOwnsProfile(profileId);
+  await prisma.profile.deleteMany({ where: { id: profileId, clientId } });
   redirect("/profiles");
 }
 
 // ---- Experience -------------------------------------------------------------
 
 export async function addExperience(profileId: string) {
+  await assertOwnsProfile(profileId);
   const count = await prisma.experience.count({ where: { profileId } });
   await prisma.experience.create({
     data: { profileId, company: "", role: "", order: count },
@@ -78,8 +85,9 @@ export async function addExperience(profileId: string) {
 }
 
 export async function updateExperience(id: string, profileId: string, formData: FormData) {
-  await prisma.experience.update({
-    where: { id },
+  await assertOwnsProfile(profileId);
+  await prisma.experience.updateMany({
+    where: { id, profileId },
     data: {
       company: str(formData.get("company")),
       role: str(formData.get("role")),
@@ -94,21 +102,24 @@ export async function updateExperience(id: string, profileId: string, formData: 
 }
 
 export async function deleteExperience(id: string, profileId: string) {
-  await prisma.experience.deleteMany({ where: { id } });
+  await assertOwnsProfile(profileId);
+  await prisma.experience.deleteMany({ where: { id, profileId } });
   revalidatePath(`/profiles/${profileId}`);
 }
 
 // ---- Education --------------------------------------------------------------
 
 export async function addEducation(profileId: string) {
+  await assertOwnsProfile(profileId);
   const count = await prisma.education.count({ where: { profileId } });
   await prisma.education.create({ data: { profileId, school: "", order: count } });
   revalidatePath(`/profiles/${profileId}`);
 }
 
 export async function updateEducation(id: string, profileId: string, formData: FormData) {
-  await prisma.education.update({
-    where: { id },
+  await assertOwnsProfile(profileId);
+  await prisma.education.updateMany({
+    where: { id, profileId },
     data: {
       school: str(formData.get("school")),
       degree: orNull(formData.get("degree")),
@@ -122,13 +133,15 @@ export async function updateEducation(id: string, profileId: string, formData: F
 }
 
 export async function deleteEducation(id: string, profileId: string) {
-  await prisma.education.deleteMany({ where: { id } });
+  await assertOwnsProfile(profileId);
+  await prisma.education.deleteMany({ where: { id, profileId } });
   revalidatePath(`/profiles/${profileId}`);
 }
 
 // ---- Skills -----------------------------------------------------------------
 
 export async function setSkills(profileId: string, formData: FormData) {
+  await assertOwnsProfile(profileId);
   // Skills entered as "Category: a, b, c" lines or a flat comma list.
   const raw = String(formData.get("skills") ?? "");
   await prisma.skill.deleteMany({ where: { profileId } });
@@ -156,6 +169,7 @@ export async function parseResumeIntoProfile(
   profileId: string,
   formData: FormData,
 ): Promise<ParseResult> {
+  await assertOwnsProfile(profileId);
   const file = formData.get("file");
   const pastedText = str(formData.get("text"));
 
@@ -295,6 +309,7 @@ export async function parseResumeIntoProfile(
 // ---- Base resume ------------------------------------------------------------
 
 export async function saveBaseResume(profileId: string, formData: FormData) {
+  await assertOwnsProfile(profileId);
   const rawText = str(formData.get("rawText"));
   if (rawText) {
     await prisma.baseResume.upsert({

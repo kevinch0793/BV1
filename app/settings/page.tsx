@@ -1,5 +1,6 @@
 import { getSettings, TAILORING_MODELS } from "@/lib/settings";
 import { updateSettings, updateTailoringModel } from "@/app/actions/settings";
+import { requireClient } from "@/lib/auth";
 import { DirtyForm } from "@/components/DirtyForm";
 import { SectionOrderEditor } from "@/components/SectionOrderEditor";
 import { TemplateSettings } from "@/components/TemplateSettings";
@@ -23,7 +24,8 @@ const saveBtn =
   "rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-neutral-900";
 
 export default async function SettingsPage() {
-  const settings = await getSettings();
+  const { id: clientId } = await requireClient();
+  const settings = await getSettings(clientId);
 
   return (
     <div className="space-y-6">

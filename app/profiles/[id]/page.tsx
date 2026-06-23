@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { profileWhere } from "@/lib/owner";
 import { profileInclude, asLinks, asProjectGroups } from "@/lib/profile-data";
 import {
   updateProfileBasics,
@@ -30,7 +31,7 @@ const delBtn = "rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium
 
 export default async function ProfileEditor({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const profile = await prisma.profile.findUnique({ where: { id }, include: profileInclude });
+  const profile = await prisma.profile.findFirst({ where: { id, ...(await profileWhere()) }, include: profileInclude });
   if (!profile) notFound();
 
   const links = asLinks(profile.links);
@@ -48,12 +49,6 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
           <p className="text-sm text-neutral-500">{profile.label}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href={`/tailor/${profile.id}`}
-            className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
-          >
-            Tailor manually
-          </Link>
           <Link
             href={`/profiles/${profile.id}/dashboard`}
             className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white hover:bg-sky-800"

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
+import { ownedByProfileWhere } from "@/lib/owner";
 import { SavedResumeView } from "./SavedResumeView";
 import type { ResumeContent } from "@/lib/llm/schema";
 import { normalizeTemplate } from "@/components/templates";
@@ -10,13 +11,13 @@ export const dynamic = "force-dynamic";
 
 export default async function ResumeViewer({ params }: { params: Promise<{ tailoredId: string }> }) {
   const { tailoredId } = await params;
-  const t = await prisma.tailoredResume.findUnique({
-    where: { id: tailoredId },
-    include: { job: true },
+  const t = await prisma.tailoredResume.findFirst({
+    where: { id: tailoredId, ...(await ownedByProfileWhere()) },
+    include: { job: true, profile: { select: { clientId: true } } },
   });
   if (!t) notFound();
 
-  const { sectionOrder, defaultTemplate } = await getSettings();
+  const { sectionOrder, defaultTemplate } = await getSettings(t.profile.clientId);
 
   return (
     <div className="space-y-4">

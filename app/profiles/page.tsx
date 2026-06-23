@@ -1,13 +1,20 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { profileWhere } from "@/lib/owner";
 import { createProfile } from "@/app/actions/profiles";
+import { AddUrlsButton } from "@/components/AddUrlsButton";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfilesPage() {
   const profiles = await prisma.profile.findMany({
+    where: await profileWhere(),
     orderBy: { updatedAt: "desc" },
-    include: { _count: { select: { jobs: true, tailored: true, experiences: true } } },
+    include: {
+      _count: { select: { tailored: { where: { jobPostingId: { not: null } } } } },
+      jobs: { where: { applyStatus: "applied" }, select: { id: true } },
+      client: { select: { email: true } },
+    },
   });
 
   return (
@@ -30,17 +37,19 @@ export default async function ProfilesPage() {
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {profiles.map((p) => (
-            <li key={p.id}>
+            <li key={p.id} className="relative">
               <Link
                 href={`/profiles/${p.id}`}
-                className="block rounded-xl border border-neutral-200 bg-white p-4 transition hover:border-sky-300 hover:shadow-sm"
+                className="block rounded-xl border border-neutral-200 bg-white p-4 pr-10 transition hover:border-sky-300 hover:shadow-sm"
               >
                 <div className="text-sm font-medium text-sky-700">{p.label}</div>
                 <div className="text-lg font-semibold text-neutral-900">{p.fullName}</div>
+                <div className="mt-1 truncate text-xs text-neutral-400" title={p.client.email}>{p.client.email}</div>
                 <div className="mt-2 text-xs text-neutral-500">
-                  {p._count.experiences} roles · {p._count.jobs} jobs · {p._count.tailored} resumes
+                  {p.jobs.length} applied · {p._count.tailored} tailored
                 </div>
               </Link>
+              <AddUrlsButton profileId={p.id} />
             </li>
           ))}
         </ul>
