@@ -129,8 +129,11 @@ export function PipelineDashboard({
                 setAddMsg(r.error ?? "Failed");
                 return;
               }
-              setAddMsg(r.added ? `Added ${r.added}.` : "No new URLs.");
-              await kick();
+              const parts: string[] = [];
+              if (r.added) parts.push(`Added ${r.added}`);
+              if (r.skipped) parts.push(`skipped ${r.skipped} duplicate${r.skipped === 1 ? "" : "s"}`);
+              setAddMsg(parts.length ? `${parts.join(", ")}.` : "No new URLs.");
+              if (r.added) await kick();
             });
           }}
           className="space-y-2"

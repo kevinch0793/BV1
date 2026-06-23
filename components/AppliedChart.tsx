@@ -122,11 +122,18 @@ export function AppliedChart({
               <div key={i} className="flex h-full flex-1 items-end justify-center gap-px">
                 {visibleProfiles.map((p) => {
                   const c = b.perProfile.get(p.id) ?? 0;
+                  // Always draw a bar so every profile shows each day; a zero-count
+                  // bar is a faint 3px stub.
                   return (
                     <div
                       key={p.id}
-                      className="flex-1 rounded-t"
-                      style={{ height: `${(c / max) * 100}%`, minHeight: c > 0 ? 2 : 0, backgroundColor: colorOf.get(p.id) }}
+                      className="min-w-0 max-w-[28px] flex-1 rounded-t"
+                      style={{
+                        height: c > 0 ? `${(c / max) * 100}%` : "3px",
+                        minHeight: 3,
+                        backgroundColor: colorOf.get(p.id),
+                        opacity: c > 0 ? 1 : 0.4,
+                      }}
                       title={`${p.name} · ${b.key}: ${c}`}
                     />
                   );

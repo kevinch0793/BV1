@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db";
 import { profileWhere, ownedByProfileWhere } from "@/lib/owner";
 import { appDayKey, appDayRange, currentAppDayKey, recentAppDayKeys } from "@/lib/appday";
 import { AppliedChart } from "@/components/AppliedChart";
-import { AddUrlsButton } from "@/components/AddUrlsButton";
 
 export const dynamic = "force-dynamic";
 
@@ -57,8 +56,8 @@ export default async function Dashboard() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {profiles.map((p) => (
-              <div key={p.id} className="relative rounded-xl border border-neutral-200 bg-white transition hover:border-sky-300 hover:shadow-sm">
-                <Link href={`/profiles/${p.id}`} className="block p-4 pr-10">
+              <div key={p.id} className="rounded-xl border border-neutral-200 bg-white transition hover:border-sky-300 hover:shadow-sm">
+                <Link href={`/profiles/${p.id}`} className="block p-4">
                   <div className="text-sm font-medium text-sky-700">{p.label}</div>
                   <div className="text-lg font-semibold text-neutral-900">{p.fullName}</div>
                   <div className="mt-1 truncate text-xs text-neutral-400" title={p.client.email}>{p.client.email}</div>
@@ -70,7 +69,6 @@ export default async function Dashboard() {
                   Today: {p.jobs.filter((j) => j.applyStatus === "applied").length} applied ·{" "}
                   {p.jobs.filter((j) => j.tailored.length > 0).length} tailored →
                 </Link>
-                <AddUrlsButton profileId={p.id} />
               </div>
             ))}
           </div>

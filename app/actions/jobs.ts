@@ -8,32 +8,48 @@ import { assertOwnsProfile, assertOwnsJob } from "@/lib/owner";
 
 export type JobActionResult = { ok: boolean; error?: string; needsPaste?: boolean };
 
+// Canonicalize a URL so trailing slashes, fragments and host casing don't sneak
+// in duplicates. Query strings are kept (job ids often live there, e.g. gh_jid).
+function normalizeUrl(raw: string | null | undefined): string | null {
+  let s = (raw ?? "").trim();
+  if (!s) return null;
+  if (!/^https?:\/\//i.test(s)) s = `https://${s}`;
+  try {
+    const u = new URL(s);
+    u.hash = "";
+    u.hostname = u.hostname.toLowerCase();
+    let out = u.toString();
+    if (out.endsWith("/")) out = out.slice(0, -1);
+    return out;
+  } catch {
+    return s.replace(/\/+$/, "");
+  }
+}
+
 function normalizeUrls(raw: string): string[] {
   const seen = new Set<string>();
-  for (const line of raw.split(/[\n,]/).map((l) => l.trim())) {
-    if (!line) continue;
-    const url = /^https?:\/\//i.test(line) ? line : `https://${line}`;
-    seen.add(url);
+  for (const line of raw.split(/[\n,]/)) {
+    const u = normalizeUrl(line);
+    if (u) seen.add(u); // de-dupes within the submitted batch
   }
   return [...seen];
 }
 
-/** Bulk-add job URLs as pending entries (no scraping yet). */
+/** Bulk-add job URLs as pending entries (no scraping yet). Duplicates — within
+ *  the batch or already on this profile — are skipped, not re-added. */
 export async function addJobUrls(
   profileId: string,
   formData: FormData,
-): Promise<{ ok: boolean; added: number; created: { id: string; url: string | null }[]; error?: string }> {
+): Promise<{ ok: boolean; added: number; skipped: number; created: { id: string; url: string | null }[]; error?: string }> {
   await assertOwnsProfile(profileId);
   const urls = normalizeUrls(String(formData.get("urls") ?? ""));
-  if (urls.length === 0) return { ok: false, added: 0, created: [], error: "Enter at least one URL." };
+  if (urls.length === 0) return { ok: false, added: 0, skipped: 0, created: [], error: "Enter at least one URL." };
 
-  // Skip URLs already saved for this profile.
-  const existing = await prisma.jobPosting.findMany({
-    where: { profileId, url: { in: urls } },
-    select: { url: true },
-  });
-  const have = new Set(existing.map((e) => e.url));
+  // Skip any URL already on this profile (compare normalized on both sides).
+  const existing = await prisma.jobPosting.findMany({ where: { profileId }, select: { url: true } });
+  const have = new Set(existing.map((e) => normalizeUrl(e.url)).filter((u): u is string => !!u));
   const fresh = urls.filter((u) => !have.has(u));
+  const skipped = urls.length - fresh.length;
 
   let created: { id: string; url: string | null }[] = [];
   if (fresh.length) {
@@ -46,7 +62,7 @@ export async function addJobUrls(
     });
   }
   revalidatePath(`/profiles/${profileId}/dashboard`);
-  return { ok: true, added: fresh.length, created };
+  return { ok: true, added: fresh.length, skipped, created };
 }
 
 /** Scrape + extract a single job. Called one-at-a-time by the queue. */
