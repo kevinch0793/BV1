@@ -5,12 +5,14 @@ import { createPortal } from "react-dom";
 import { ResumePreview, normalizeTemplate } from "@/components/templates";
 import { previewTailored, type TailoredPreview } from "@/app/actions/tailor";
 import { downloadResume } from "@/lib/exportClient";
+import { saveResumeToDownloads } from "@/app/actions/export";
 import { fitColor } from "@/lib/fit";
 
 export function ResumePreviewModal({ tailoredId, onClose }: { tailoredId: string; onClose: () => void }) {
   const [data, setData] = useState<TailoredPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<"pdf" | "docx" | null>(null);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -30,8 +32,14 @@ export function ResumePreviewModal({ tailoredId, onClose }: { tailoredId: string
 
   async function download(format: "pdf" | "docx") {
     setDownloading(format);
+    setSavedMsg(null);
     try {
-      await downloadResume(tailoredId, format);
+      const r = await saveResumeToDownloads(tailoredId, format);
+      if (r.ok) setSavedMsg(`Saved to Downloads/${r.path.split("/").pop()}`);
+      else {
+        await downloadResume(tailoredId, format);
+        setSavedMsg("Downloaded.");
+      }
     } catch (e) {
       alert(`Download failed: ${e instanceof Error ? e.message : "unknown error"}`);
     } finally {
@@ -45,7 +53,10 @@ export function ResumePreviewModal({ tailoredId, onClose }: { tailoredId: string
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/40 p-4" onClick={onClose}>
       <div className="my-6 w-full max-w-4xl rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
-          <h3 className="text-sm font-semibold text-neutral-900">Resume preview</h3>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+            Resume preview
+            {savedMsg && <span className="text-xs font-normal text-emerald-600">{savedMsg}</span>}
+          </h3>
           <div className="flex items-center gap-2">
             <button
               onClick={() => download("pdf")}

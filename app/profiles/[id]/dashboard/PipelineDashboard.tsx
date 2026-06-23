@@ -6,6 +6,7 @@ import { addJobUrls, setJobFromText, deleteJob, setApplyStatus, type ApplyStatus
 import { startPipeline, pipelineRunning, retryJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResume } from "@/lib/exportClient";
+import { saveResumeToDownloads } from "@/app/actions/export";
 import { fitColor } from "@/lib/fit";
 
 type Job = {
@@ -248,7 +249,8 @@ function JobRow({
     if (!job.tailoredId) return;
     setApplying(true);
     try {
-      await downloadResume(job.tailoredId, "pdf");
+      const r = await saveResumeToDownloads(job.tailoredId, "pdf");
+      if (!r.ok) await downloadResume(job.tailoredId, "pdf");
     } catch (e) {
       alert(`Resume download failed: ${e instanceof Error ? e.message : "unknown error"}`);
     } finally {

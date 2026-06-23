@@ -22,7 +22,7 @@ export async function GET(
   // Admins can export any resume; clients only their own.
   const t = await prisma.tailoredResume.findFirst({
     where: client.role === "admin" ? { id: tailoredId } : { id: tailoredId, profile: { clientId: client.id } },
-    include: { job: true, profile: { select: { clientId: true } } },
+    include: { profile: { select: { clientId: true } } },
   });
   if (!t) return new NextResponse("Not found", { status: 404 });
 
@@ -37,7 +37,7 @@ export async function GET(
   const order = orderParam ? parseSectionOrder(orderParam) : settings.sectionOrder;
 
   const content = t.content as ResumeContent;
-  const filename = resumeFileName(content.name, t.job?.company, format);
+  const filename = resumeFileName(content.name, format);
 
   try {
     if (format === "docx") {
