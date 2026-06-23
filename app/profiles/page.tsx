@@ -1,18 +1,23 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { profileWhere } from "@/lib/owner";
+import { appDayRange, currentAppDayKey } from "@/lib/appday";
 import { createProfile } from "@/app/actions/profiles";
 import { AddUrlsButton } from "@/components/AddUrlsButton";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfilesPage() {
+  const today = appDayRange(currentAppDayKey());
   const profiles = await prisma.profile.findMany({
     where: await profileWhere(),
     orderBy: { updatedAt: "desc" },
     include: {
-      _count: { select: { tailored: { where: { jobPostingId: { not: null } } } } },
-      jobs: { where: { applyStatus: "applied" }, select: { id: true } },
+      // Today's jobs only — for the card's applied/tailored counts.
+      jobs: {
+        where: { createdAt: { gte: today.start } },
+        select: { applyStatus: true, tailored: { take: 1, select: { id: true } } },
+      },
       client: { select: { email: true } },
     },
   });
@@ -47,7 +52,8 @@ export default async function ProfilesPage() {
                 href={`/profiles/${p.id}/dashboard`}
                 className="block rounded-b-xl border-t border-neutral-100 px-4 py-2 text-xs font-medium text-neutral-500 hover:bg-sky-50 hover:text-sky-700"
               >
-                {p.jobs.length} applied · {p._count.tailored} tailored →
+                Today: {p.jobs.filter((j) => j.applyStatus === "applied").length} applied ·{" "}
+                {p.jobs.filter((j) => j.tailored.length > 0).length} tailored →
               </Link>
               <AddUrlsButton profileId={p.id} />
             </li>

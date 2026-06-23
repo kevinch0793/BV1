@@ -2,8 +2,6 @@
 
 import { useMemo, useState } from "react";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 // Per-profile colors (bar fill + legend swatch), assigned by profile order.
 const COLORS = [
   "#0284c7", // sky-600
@@ -19,11 +17,20 @@ const COLORS = [
 ];
 
 type ChartProfile = { id: string; name: string };
-type Event = { profileId: string; t: number };
+type Event = { profileId: string; day: string }; // day = app-day key "YYYY-MM-DD"
 
-/** Stacked daily applied-count chart, one color per profile. Click a profile in
- *  the legend to hide it (crossed out). X = day, Y = applied count. */
-export function AppliedChart({ profiles, events }: { profiles: ChartProfile[]; events: Event[] }) {
+/** Grouped per-profile daily applied-count chart, one color per profile. Click a
+ *  profile in the legend to hide it (crossed out). X = app day (rolls at 10pm
+ *  ET), Y = applied count. `dayKeys` is the last 30 app days, ascending. */
+export function AppliedChart({
+  profiles,
+  events,
+  dayKeys,
+}: {
+  profiles: ChartProfile[];
+  events: Event[];
+  dayKeys: string[];
+}) {
   const [days, setDays] = useState<7 | 30>(7);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
 
@@ -34,29 +41,30 @@ export function AppliedChart({ profiles, events }: { profiles: ChartProfile[]; e
   }, [profiles]);
 
   const { buckets, max, total } = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const window = dayKeys.slice(-days);
     const visible = events.filter((e) => !hidden.has(e.profileId));
-    const buckets = Array.from({ length: days }, (_, i) => {
-      const d = new Date(today);
-      d.setDate(today.getDate() - (days - 1 - i));
-      const start = d.getTime();
-      const inDay = visible.filter((e) => e.t >= start && e.t < start + DAY_MS);
+    const buckets = window.map((key) => {
       const perProfile = new Map<string, number>();
-      for (const e of inDay) perProfile.set(e.profileId, (perProfile.get(e.profileId) ?? 0) + 1);
-      return { date: d, perProfile, total: inDay.length };
+      let dayTotal = 0;
+      for (const e of visible) {
+        if (e.day !== key) continue;
+        perProfile.set(e.profileId, (perProfile.get(e.profileId) ?? 0) + 1);
+        dayTotal++;
+      }
+      return { key, perProfile, total: dayTotal };
     });
-    // Grouped (side-by-side) bars: scale to the tallest single-profile day.
     const max = Math.max(1, ...buckets.flatMap((b) => [...b.perProfile.values()]));
     const total = buckets.reduce((n, b) => n + b.total, 0);
     return { buckets, max, total };
-  }, [events, hidden, days]);
+  }, [events, hidden, days, dayKeys]);
 
   const visibleProfiles = profiles.filter((p) => !hidden.has(p.id));
 
-  const xLabel = (d: Date, i: number) => {
-    if (days === 7) return d.toLocaleDateString(undefined, { weekday: "short" });
-    return i % 5 === 0 || i === days - 1 ? String(d.getDate()) : "";
+  const xLabel = (key: string, i: number) => {
+    const [y, mo, d] = key.split("-").map(Number);
+    const date = new Date(y, mo - 1, d);
+    if (days === 7) return date.toLocaleDateString(undefined, { weekday: "short" });
+    return i % 5 === 0 || i === days - 1 ? String(d) : "";
   };
 
   const toggle = (id: string) =>
@@ -119,7 +127,7 @@ export function AppliedChart({ profiles, events }: { profiles: ChartProfile[]; e
                       key={p.id}
                       className="flex-1 rounded-t"
                       style={{ height: `${(c / max) * 100}%`, minHeight: c > 0 ? 2 : 0, backgroundColor: colorOf.get(p.id) }}
-                      title={`${p.name} · ${b.date.toLocaleDateString()}: ${c}`}
+                      title={`${p.name} · ${b.key}: ${c}`}
                     />
                   );
                 })}
@@ -128,7 +136,7 @@ export function AppliedChart({ profiles, events }: { profiles: ChartProfile[]; e
           </div>
           <div className="mt-1 flex gap-1 border-t border-neutral-100 pt-1">
             {buckets.map((b, i) => (
-              <span key={i} className="flex-1 text-center text-[9px] text-neutral-400">{xLabel(b.date, i)}</span>
+              <span key={i} className="flex-1 text-center text-[9px] text-neutral-400">{xLabel(b.key, i)}</span>
             ))}
           </div>
         </>

@@ -1,30 +1,38 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { profileWhere } from "@/lib/owner";
+import { profileWhere, ownedByProfileWhere } from "@/lib/owner";
+import { appDayKey, appDayRange, currentAppDayKey, recentAppDayKeys } from "@/lib/appday";
 import { AppliedChart } from "@/components/AppliedChart";
 import { AddUrlsButton } from "@/components/AddUrlsButton";
 
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
-  const profiles = await prisma.profile.findMany({
-    where: await profileWhere(),
-    orderBy: { updatedAt: "desc" },
-    include: {
-      client: { select: { email: true } },
-      // Jobs that have a tailored resume = "tailored"; applyStatus "applied" = "applied".
-      _count: { select: { tailored: { where: { jobPostingId: { not: null } } } } },
-      jobs: { where: { applyStatus: "applied" }, select: { appliedAt: true } },
-    },
-  });
+  const today = appDayRange(currentAppDayKey()); // current app day (rolls at 10pm ET)
+  const dayKeys = recentAppDayKeys(30); // last 30 app days, ascending
+  const chartStart = appDayRange(dayKeys[0]).start;
 
-  // Per-profile applied events (last 30 days) for the chart's stacked series.
-  const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  const events = profiles.flatMap((p) =>
-    p.jobs
-      .map((j) => ({ profileId: p.id, t: j.appliedAt ? new Date(j.appliedAt).getTime() : 0 }))
-      .filter((e) => e.t >= monthAgo),
-  );
+  const [profiles, appliedJobs] = await Promise.all([
+    prisma.profile.findMany({
+      where: await profileWhere(),
+      orderBy: { updatedAt: "desc" },
+      include: {
+        client: { select: { email: true } },
+        // Today's jobs only — for the card's applied/tailored counts.
+        jobs: {
+          where: { createdAt: { gte: today.start } },
+          select: { applyStatus: true, tailored: { take: 1, select: { id: true } } },
+        },
+      },
+    }),
+    // Applied events (last 30 app days) for the "applications per day" chart.
+    prisma.jobPosting.findMany({
+      where: { ...(await ownedByProfileWhere()), applyStatus: "applied", appliedAt: { gte: chartStart } },
+      select: { profileId: true, appliedAt: true },
+    }),
+  ]);
+
+  const events = appliedJobs.map((j) => ({ profileId: j.profileId, day: appDayKey(j.appliedAt!) }));
   const chartProfiles = profiles.map((p) => ({ id: p.id, name: p.fullName || p.label }));
 
   return (
@@ -59,7 +67,8 @@ export default async function Dashboard() {
                   href={`/profiles/${p.id}/dashboard`}
                   className="block rounded-b-xl border-t border-neutral-100 px-4 py-2 text-xs font-medium text-neutral-500 hover:bg-sky-50 hover:text-sky-700"
                 >
-                  {p.jobs.length} applied · {p._count.tailored} tailored →
+                  Today: {p.jobs.filter((j) => j.applyStatus === "applied").length} applied ·{" "}
+                  {p.jobs.filter((j) => j.tailored.length > 0).length} tailored →
                 </Link>
                 <AddUrlsButton profileId={p.id} />
               </div>
@@ -70,7 +79,7 @@ export default async function Dashboard() {
 
       <section>
         <h2 className="mb-4 text-lg font-semibold text-neutral-900">Applications per day</h2>
-        <AppliedChart profiles={chartProfiles} events={events} />
+        <AppliedChart profiles={chartProfiles} events={events} dayKeys={dayKeys} />
       </section>
     </div>
   );

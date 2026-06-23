@@ -56,10 +56,14 @@ export function PipelineDashboard({
   profileId,
   jobs,
   canTailor,
+  isToday,
+  dayLabel,
 }: {
   profileId: string;
   jobs: Job[];
   canTailor: boolean;
+  isToday: boolean;
+  dayLabel: string;
 }) {
   const router = useRouter();
   const [polling, setPolling] = useState(false);
@@ -108,7 +112,9 @@ export function PipelineDashboard({
 
   return (
     <div className="space-y-6">
-      {/* Add URLs (auto-runs the pipeline) */}
+      {/* Add URLs (auto-runs the pipeline) — only on today's view, since new jobs
+          are stamped with today's date. */}
+      {isToday && (
       <section className="rounded-xl border border-neutral-200 bg-white p-5">
         <h2 className="text-lg font-semibold text-neutral-900">Add job URLs</h2>
         <p className="mb-3 text-xs text-neutral-500">
@@ -151,12 +157,15 @@ export function PipelineDashboard({
           <p className="mt-3 text-xs text-amber-600">Tailoring needs a base resume or a project on the profile — until then jobs will only be fetched.</p>
         )}
       </section>
+      )}
 
       {/* Job table */}
       <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
         <div className="border-b border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700">Jobs ({jobs.length})</div>
         {jobs.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-neutral-400">No jobs yet — add URLs above.</p>
+          <p className="px-4 py-6 text-sm text-neutral-400">
+            {isToday ? "No jobs yet — add URLs above." : `No jobs from ${dayLabel}.`}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

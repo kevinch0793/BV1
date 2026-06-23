@@ -2,17 +2,35 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { profileWhere } from "@/lib/owner";
+import { appDayRange, currentAppDayKey, isValidDayKey } from "@/lib/appday";
 import { PipelineDashboard } from "./PipelineDashboard";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProfileDashboard({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProfileDashboard({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ d?: string }>;
+}) {
   const { id } = await params;
+  const { d } = await searchParams;
+  // The "day" rolls over at 10pm ET (see lib/appday). Default = current app day.
+  const key = isValidDayKey(d) ? d : currentAppDayKey();
+  const isToday = key === currentAppDayKey();
+  const { start, end } = appDayRange(key);
+  const [ky, km, kd] = key.split("-").map(Number);
+  const label = isToday
+    ? "Today"
+    : new Date(ky, km - 1, kd).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric", year: "numeric" });
+
   const profile = await prisma.profile.findFirst({
     where: { id, ...(await profileWhere()) },
     include: {
       baseResume: { select: { id: true } },
-      jobs: { orderBy: { createdAt: "desc" } },
+      // Only the selected day's jobs (default today).
+      jobs: { where: { createdAt: { gte: start, lt: end } }, orderBy: { createdAt: "desc" } },
       tailored: { select: { id: true, jobPostingId: true, fitAfter: true } },
       _count: { select: { experiences: true } },
     },
@@ -47,9 +65,18 @@ export default async function ProfileDashboard({ params }: { params: Promise<{ i
           </Link>
           <h1 className="text-2xl font-semibold text-neutral-900">Tailoring dashboard</h1>
           <p className="text-sm text-neutral-500">
-            Add job URLs, fetch the descriptions, then auto-tailor a resume for each — all in one queue.
+            {isToday ? "Today's jobs." : `Jobs from ${label}.`} See other days on the{" "}
+            <Link href="/calendar" className="text-sky-700 hover:underline">calendar</Link>.
           </p>
         </div>
+        {!isToday && (
+          <Link
+            href={`/profiles/${profile.id}/dashboard`}
+            className="rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100"
+          >
+            ← Today
+          </Link>
+        )}
       </div>
 
       {!canTailor && (
@@ -59,7 +86,7 @@ export default async function ProfileDashboard({ params }: { params: Promise<{ i
         </p>
       )}
 
-      <PipelineDashboard profileId={profile.id} jobs={jobs} canTailor={canTailor} />
+      <PipelineDashboard profileId={profile.id} jobs={jobs} canTailor={canTailor} isToday={isToday} dayLabel={label} />
     </div>
   );
 }

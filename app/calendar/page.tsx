@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/db";
 import { ownedByProfileWhere } from "@/lib/owner";
+import { appDayKey, appDayRange } from "@/lib/appday";
 import { CalendarView, type DayEntry } from "@/components/CalendarView";
+
+const pad = (n: number) => String(n).padStart(2, "0");
 
 export const dynamic = "force-dynamic";
 
@@ -21,36 +24,32 @@ function parseMonth(m?: string): { year: number; month: number } {
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
   const sp = await searchParams;
   const { year, month } = parseMonth(sp?.m);
-  const start = new Date(year, month, 1);
-  const end = new Date(year, month + 1, 1);
+  // Query the exact UTC span covering this month's app days (each rolls at 10pm
+  // ET), so jobs land on the right calendar cell even across month boundaries.
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const queryStart = appDayRange(`${year}-${pad(month + 1)}-01`).start;
+  const queryEnd = appDayRange(`${year}-${pad(month + 1)}-${pad(lastDay)}`).end;
 
-  // Only count real job applications (tailored resumes tied to an existing job),
-  // and at most one per job, so the calendar reflects what actually exists.
-  const tailored = await prisma.tailoredResume.findMany({
-    where: { ...(await ownedByProfileWhere()), createdAt: { gte: start, lt: end }, jobPostingId: { not: null } },
-    orderBy: { createdAt: "asc" },
-    include: {
-      profile: { select: { id: true, fullName: true } },
-      job: { select: { role: true, company: true, applyStatus: true } },
+  // Jobs grouped by the app day they were added (matches the dashboard's day
+  // view), so clicking a day opens exactly that day's job table.
+  const jobs = await prisma.jobPosting.findMany({
+    where: { ...(await ownedByProfileWhere()), createdAt: { gte: queryStart, lt: queryEnd } },
+    select: {
+      createdAt: true,
+      profileId: true,
+      applyStatus: true,
+      profile: { select: { fullName: true } },
+      tailored: { take: 1, select: { id: true } },
     },
   });
 
-  const seenJob = new Set<string>();
-  const entries: DayEntry[] = [];
-  for (const t of tailored) {
-    if (!t.jobPostingId || seenJob.has(t.jobPostingId)) continue;
-    seenJob.add(t.jobPostingId);
-    entries.push({
-      tailoredId: t.id,
-      day: new Date(t.createdAt).getDate(),
-      profileId: t.profileId,
-      profileLabel: t.profile.fullName,
-      role: t.job?.role ?? null,
-      company: t.job?.company ?? null,
-      fitAfter: t.fitAfter,
-      applied: t.job?.applyStatus === "applied",
-    });
-  }
+  const entries: DayEntry[] = jobs.map((j) => ({
+    day: Number(appDayKey(j.createdAt).split("-")[2]),
+    profileId: j.profileId,
+    profileLabel: j.profile.fullName,
+    applied: j.applyStatus === "applied",
+    tailored: j.tailored.length > 0,
+  }));
 
   return (
     <CalendarView

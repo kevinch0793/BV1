@@ -1,15 +1,14 @@
 import Link from "next/link";
 
 export type DayEntry = {
-  tailoredId: string;
   day: number;
   profileId: string;
   profileLabel: string;
-  role: string | null;
-  company: string | null;
-  fitAfter: number | null;
   applied: boolean;
+  tailored: boolean;
 };
+
+const pad = (n: number) => String(n).padStart(2, "0");
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -64,7 +63,7 @@ export function CalendarView({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-neutral-900">Calendar</h1>
-          <p className="text-sm text-neutral-500">Per profile, each day: applied / tailored. Click a profile to open its dashboard.</p>
+          <p className="text-sm text-neutral-500">Per profile, each day: applied / tailored. Click a day to open that day&apos;s jobs.</p>
         </div>
         <div className="flex items-center gap-2">
           <Link href={`/calendar?m=${prevM}`} className="rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm hover:bg-neutral-100">←</Link>
@@ -88,14 +87,15 @@ export function CalendarView({
                     <div className="space-y-1">
                       {profiles &&
                         [...profiles.entries()].map(([pid, list]) => {
-                          const tailoredCount = list.length;
+                          const tailoredCount = list.filter((e) => e.tailored).length;
                           const appliedCount = list.filter((e) => e.applied).length;
+                          const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`;
                           return (
                             <Link
                               key={pid}
-                              href={`/profiles/${pid}/dashboard`}
+                              href={`/profiles/${pid}/dashboard?d=${dateStr}`}
                               className={`flex w-full items-center justify-between gap-1 rounded px-1.5 py-1 text-left text-xs font-medium hover:opacity-90 ${colorOf(pid)}`}
-                              title={`${list[0].profileLabel} — ${appliedCount} applied / ${tailoredCount} tailored`}
+                              title={`${list[0].profileLabel} — ${appliedCount} applied / ${tailoredCount} tailored on ${dateStr}`}
                             >
                               <span className="truncate">{list[0].profileLabel}</span>
                               <span className="shrink-0 rounded-full bg-white/70 px-1.5 leading-tight">
