@@ -31,7 +31,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     orderBy: { createdAt: "asc" },
     include: {
       profile: { select: { id: true, fullName: true } },
-      job: { select: { role: true, company: true } },
+      job: { select: { role: true, company: true, applyStatus: true } },
     },
   });
 
@@ -48,6 +48,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       role: t.job?.role ?? null,
       company: t.job?.company ?? null,
       fitAfter: t.fitAfter,
+      applied: t.job?.applyStatus === "applied",
     });
   }
 

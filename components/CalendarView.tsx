@@ -8,11 +8,14 @@ export type DayEntry = {
   role: string | null;
   company: string | null;
   fitAfter: number | null;
+  applied: boolean;
 };
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// Distinct color per profile, assigned by stable profile order (not a hash, so
+// adjacent profiles never collide).
 const PALETTE = [
   "bg-sky-100 text-sky-800",
   "bg-emerald-100 text-emerald-800",
@@ -20,12 +23,11 @@ const PALETTE = [
   "bg-amber-100 text-amber-800",
   "bg-rose-100 text-rose-800",
   "bg-teal-100 text-teal-800",
+  "bg-indigo-100 text-indigo-800",
+  "bg-pink-100 text-pink-800",
+  "bg-lime-100 text-lime-800",
+  "bg-cyan-100 text-cyan-800",
 ];
-function colorFor(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return PALETTE[h % PALETTE.length];
-}
 
 export function CalendarView({
   year,
@@ -42,12 +44,15 @@ export function CalendarView({
 }) {
   // day -> profileId -> entries
   const byDay = new Map<number, Map<string, DayEntry[]>>();
+  const order: string[] = []; // distinct profileIds in first-seen order
   for (const e of entries) {
+    if (!order.includes(e.profileId)) order.push(e.profileId);
     if (!byDay.has(e.day)) byDay.set(e.day, new Map());
     const m = byDay.get(e.day)!;
     if (!m.has(e.profileId)) m.set(e.profileId, []);
     m.get(e.profileId)!.push(e);
   }
+  const colorOf = (pid: string) => PALETTE[order.indexOf(pid) % PALETTE.length];
 
   const firstDow = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -59,7 +64,7 @@ export function CalendarView({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-neutral-900">Calendar</h1>
-          <p className="text-sm text-neutral-500">Jobs applied per profile, each day. Click a profile to open its jobs.</p>
+          <p className="text-sm text-neutral-500">Per profile, each day: applied / tailored. Click a profile to open its dashboard.</p>
         </div>
         <div className="flex items-center gap-2">
           <Link href={`/calendar?m=${prevM}`} className="rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm hover:bg-neutral-100">←</Link>
@@ -82,17 +87,23 @@ export function CalendarView({
                     <div className="mb-1 text-xs text-neutral-400">{day}</div>
                     <div className="space-y-1">
                       {profiles &&
-                        [...profiles.entries()].map(([pid, list]) => (
-                          <Link
-                            key={pid}
-                            href={`/profiles/${pid}/dashboard`}
-                            className={`flex w-full items-center justify-between gap-1 rounded px-1.5 py-1 text-left text-xs font-medium hover:opacity-90 ${colorFor(pid)}`}
-                            title={`${list[0].profileLabel} — ${list.length} applied`}
-                          >
-                            <span className="truncate">{list[0].profileLabel}</span>
-                            <span className="shrink-0 rounded-full bg-white/70 px-1.5 leading-tight">{list.length}</span>
-                          </Link>
-                        ))}
+                        [...profiles.entries()].map(([pid, list]) => {
+                          const tailoredCount = list.length;
+                          const appliedCount = list.filter((e) => e.applied).length;
+                          return (
+                            <Link
+                              key={pid}
+                              href={`/profiles/${pid}/dashboard`}
+                              className={`flex w-full items-center justify-between gap-1 rounded px-1.5 py-1 text-left text-xs font-medium hover:opacity-90 ${colorOf(pid)}`}
+                              title={`${list[0].profileLabel} — ${appliedCount} applied / ${tailoredCount} tailored`}
+                            >
+                              <span className="truncate">{list[0].profileLabel}</span>
+                              <span className="shrink-0 rounded-full bg-white/70 px-1.5 leading-tight">
+                                {appliedCount}/{tailoredCount}
+                              </span>
+                            </Link>
+                          );
+                        })}
                     </div>
                   </>
                 )}

@@ -18,12 +18,14 @@ export default async function Dashboard() {
     },
   });
 
-  // Applied timestamps (last 30 days) across all visible profiles for the chart.
+  // Per-profile applied events (last 30 days) for the chart's stacked series.
   const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  const applied = profiles
-    .flatMap((p) => p.jobs)
-    .map((j) => (j.appliedAt ? new Date(j.appliedAt).getTime() : 0))
-    .filter((t) => t >= monthAgo);
+  const events = profiles.flatMap((p) =>
+    p.jobs
+      .map((j) => ({ profileId: p.id, t: j.appliedAt ? new Date(j.appliedAt).getTime() : 0 }))
+      .filter((e) => e.t >= monthAgo),
+  );
+  const chartProfiles = profiles.map((p) => ({ id: p.id, name: p.fullName || p.label }));
 
   return (
     <div className="space-y-10">
@@ -47,17 +49,17 @@ export default async function Dashboard() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {profiles.map((p) => (
-              <div key={p.id} className="relative">
-                <Link
-                  href={`/profiles/${p.id}`}
-                  className="block rounded-xl border border-neutral-200 bg-white p-4 pr-10 transition hover:border-sky-300 hover:shadow-sm"
-                >
+              <div key={p.id} className="relative rounded-xl border border-neutral-200 bg-white transition hover:border-sky-300 hover:shadow-sm">
+                <Link href={`/profiles/${p.id}`} className="block p-4 pr-10">
                   <div className="text-sm font-medium text-sky-700">{p.label}</div>
                   <div className="text-lg font-semibold text-neutral-900">{p.fullName}</div>
                   <div className="mt-1 truncate text-xs text-neutral-400" title={p.client.email}>{p.client.email}</div>
-                  <div className="mt-2 text-xs text-neutral-500">
-                    {p.jobs.length} applied · {p._count.tailored} tailored
-                  </div>
+                </Link>
+                <Link
+                  href={`/profiles/${p.id}/dashboard`}
+                  className="block rounded-b-xl border-t border-neutral-100 px-4 py-2 text-xs font-medium text-neutral-500 hover:bg-sky-50 hover:text-sky-700"
+                >
+                  {p.jobs.length} applied · {p._count.tailored} tailored →
                 </Link>
                 <AddUrlsButton profileId={p.id} />
               </div>
@@ -68,7 +70,7 @@ export default async function Dashboard() {
 
       <section>
         <h2 className="mb-4 text-lg font-semibold text-neutral-900">Applications per day</h2>
-        <AppliedChart applied={applied} />
+        <AppliedChart profiles={chartProfiles} events={events} />
       </section>
     </div>
   );
