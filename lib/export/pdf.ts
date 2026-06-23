@@ -1,6 +1,16 @@
 import puppeteer from "puppeteer";
 
 /**
+ * The origin headless Chrome should fetch the /print page from. Always a LOCAL
+ * address (not the public/tunnel host), so PDF rendering never loops back out
+ * through a reverse proxy / ngrok (which would show an interstitial). Override
+ * with INTERNAL_BASE_URL if the app runs on a non-default port/host.
+ */
+export function internalOrigin(): string {
+  return process.env.INTERNAL_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3000}`;
+}
+
+/**
  * Render a print page to PDF via headless Chrome. page.pdf() emulates print
  * media (so the app's `@media print` rules isolate the resume sheet), and we
  * force the exact options the user asked for:

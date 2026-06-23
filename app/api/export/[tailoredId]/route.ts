@@ -4,7 +4,7 @@ import { getSettings, parseSectionOrder } from "@/lib/settings";
 import { getCurrentClient } from "@/lib/auth";
 import { normalizeTemplate } from "@/components/templates";
 import { buildResumeDocx } from "@/lib/export/docx";
-import { renderResumePdf } from "@/lib/export/pdf";
+import { renderResumePdf, internalOrigin } from "@/lib/export/pdf";
 import { resumeFileName } from "@/lib/export/filename";
 import type { ResumeContent } from "@/lib/llm/schema";
 
@@ -50,7 +50,7 @@ export async function GET(
       });
     }
 
-    const printUrl = `${url.origin}/print/${tailoredId}?template=${encodeURIComponent(template)}&order=${encodeURIComponent(order.join(","))}`;
+    const printUrl = `${internalOrigin()}/print/${tailoredId}?template=${encodeURIComponent(template)}&order=${encodeURIComponent(order.join(","))}`;
     const buf = await renderResumePdf(printUrl);
     return new NextResponse(new Uint8Array(buf), {
       headers: {

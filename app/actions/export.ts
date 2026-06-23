@@ -9,7 +9,7 @@ import { getSettings, parseSectionOrder } from "@/lib/settings";
 import { getCurrentClient } from "@/lib/auth";
 import { normalizeTemplate } from "@/components/templates";
 import { buildResumeDocx } from "@/lib/export/docx";
-import { renderResumePdf } from "@/lib/export/pdf";
+import { renderResumePdf, internalOrigin } from "@/lib/export/pdf";
 import { resumeFileName } from "@/lib/export/filename";
 import type { ResumeContent } from "@/lib/llm/schema";
 
@@ -27,6 +27,14 @@ export async function saveResumeToDownloads(
   format: "pdf" | "docx",
   override?: { template?: string; order?: string },
 ): Promise<SaveResult> {
+  // The ~/Downloads overwrite only makes sense when the browser and server are
+  // the same machine (local use). For a tunneled/remote request (e.g. ngrok),
+  // bail so the client falls back to a normal browser download.
+  const host = (await headers()).get("host")?.toLowerCase() ?? "";
+  if (!/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host)) {
+    return { ok: false, error: "remote" };
+  }
+
   const client = await getCurrentClient();
   if (!client) return { ok: false, error: "Not signed in." };
   // Admins can export any resume; clients only their own.
@@ -47,10 +55,7 @@ export async function saveResumeToDownloads(
     if (format === "docx") {
       buf = await buildResumeDocx(content, order);
     } else {
-      const h = await headers();
-      const host = h.get("host") ?? "localhost:3000";
-      const proto = h.get("x-forwarded-proto") ?? "http";
-      const printUrl = `${proto}://${host}/print/${tailoredId}?template=${encodeURIComponent(template)}&order=${encodeURIComponent(order.join(","))}`;
+      const printUrl = `${internalOrigin()}/print/${tailoredId}?template=${encodeURIComponent(template)}&order=${encodeURIComponent(order.join(","))}`;
       buf = await renderResumePdf(printUrl);
     }
   } catch (e) {
