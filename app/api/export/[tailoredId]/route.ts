@@ -4,7 +4,7 @@ import { getSettings, parseSectionOrder } from "@/lib/settings";
 import { getCurrentClient } from "@/lib/auth";
 import { normalizeTemplate } from "@/components/templates";
 import { buildResumeDocx } from "@/lib/export/docx";
-import { renderResumePdf, internalOrigin } from "@/lib/export/pdf";
+import { renderResumePdfCached, internalOrigin } from "@/lib/export/pdf";
 import { resumeFileName } from "@/lib/export/filename";
 import type { ResumeContent } from "@/lib/llm/schema";
 
@@ -22,7 +22,7 @@ export async function GET(
   // Admins can export any resume; clients only their own.
   const t = await prisma.tailoredResume.findFirst({
     where: client.role === "admin" ? { id: tailoredId } : { id: tailoredId, profile: { clientId: client.id } },
-    include: { profile: { select: { clientId: true } } },
+    include: { profile: { select: { clientId: true } }, job: { select: { role: true, company: true } } },
   });
   if (!t) return new NextResponse("Not found", { status: 404 });
 
@@ -37,7 +37,7 @@ export async function GET(
   const order = orderParam ? parseSectionOrder(orderParam) : settings.sectionOrder;
 
   const content = t.content as ResumeContent;
-  const filename = resumeFileName(content.name, format);
+  const filename = resumeFileName(content.name, format, { role: t.job?.role, company: t.job?.company });
 
   try {
     if (format === "docx") {
@@ -51,7 +51,7 @@ export async function GET(
     }
 
     const printUrl = `${internalOrigin()}/print/${tailoredId}?template=${encodeURIComponent(template)}&order=${encodeURIComponent(order.join(","))}`;
-    const buf = await renderResumePdf(printUrl);
+    const buf = await renderResumePdfCached(printUrl, `${tailoredId}|${template}|${order.join(",")}|${JSON.stringify(content)}`);
     return new NextResponse(new Uint8Array(buf), {
       headers: {
         "Content-Type": "application/pdf",

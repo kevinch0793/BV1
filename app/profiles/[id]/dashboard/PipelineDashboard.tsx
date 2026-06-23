@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { addJobUrls, setJobFromText, deleteJob, setApplyStatus, type ApplyStatus } from "@/app/actions/jobs";
 import { startPipeline, pipelineRunning, retryJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
-import { downloadResume } from "@/lib/exportClient";
+import { downloadResumeNative } from "@/lib/exportClient";
 import { saveResumeToDownloads } from "@/app/actions/export";
 import { fitColor } from "@/lib/fit";
 
@@ -86,7 +86,9 @@ export function PipelineDashboard({
     });
   }, [profileId]);
 
-  // While polling, refresh the table and stop once the server reports idle.
+  // While polling, refresh the table and stop once the server reports idle. The
+  // interval is intentionally relaxed: each refresh refetches the whole route,
+  // which is costly over a tunnel, so polling too often makes the page feel laggy.
   useEffect(() => {
     if (!polling) return;
     let active = true;
@@ -97,7 +99,7 @@ export function PipelineDashboard({
         setPolling(false);
         router.refresh();
       }
-    }, 2500);
+    }, 5000);
     return () => {
       active = false;
       clearInterval(id);
@@ -256,18 +258,28 @@ function JobRow({
   // submit it on the site. It does NOT touch the applied status — a download
   // can't prove the resume was used, so you confirm that yourself afterward via
   // the dropdown + tailored/generic toggle.
-  async function apply() {
-    if (job.url) window.open(job.url, "_blank", "noopener,noreferrer");
-    if (!job.tailoredId) return;
-    setApplying(true);
-    try {
-      const r = await saveResumeToDownloads(job.tailoredId, "pdf");
-      if (!r.ok) await downloadResume(job.tailoredId, "pdf");
-    } catch (e) {
-      alert(`Resume download failed: ${e instanceof Error ? e.message : "unknown error"}`);
-    } finally {
-      setApplying(false);
+  function apply() {
+    const tid = job.tailoredId;
+    if (tid) {
+      const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(window.location.hostname);
+      if (isLocal) {
+        // Same machine as the server → overwrite straight into ~/Downloads.
+        setApplying(true);
+        saveResumeToDownloads(tid, "pdf")
+          .then((r) => {
+            if (!r.ok) downloadResumeNative(tid, "pdf");
+          })
+          .catch(() => downloadResumeNative(tid, "pdf"))
+          .finally(() => setApplying(false));
+      } else {
+        // Remote (e.g. ngrok): trigger a native browser download synchronously
+        // in the click handler so repeated Applies aren't blocked.
+        downloadResumeNative(tid, "pdf");
+      }
     }
+    // Open the job posting last so it doesn't consume the click's user gesture
+    // before the download starts.
+    if (job.url) window.open(job.url, "_blank", "noopener,noreferrer");
   }
 
   return (

@@ -2,6 +2,29 @@
 // disk (no print dialog). Used by the resume viewer, the dashboard preview
 // modal, and the "Apply" action.
 
+// Native, gesture-tied download: click a real <a> straight to /api/export (which
+// replies with Content-Disposition: attachment). Unlike the blob path below,
+// this runs synchronously inside the click handler, so the browser treats every
+// click as user-initiated — repeated downloads (e.g. applying to several jobs in
+// a row) don't trip Chrome's "multiple automatic downloads" block.
+export function downloadResumeNative(
+  tailoredId: string,
+  format: "pdf" | "docx",
+  params?: Record<string, string>,
+): void {
+  const qs = new URLSearchParams({ format, ...(params ?? {}) });
+  const a = document.createElement("a");
+  a.href = `/api/export/${tailoredId}?${qs}`;
+  // `download` makes the click a background download instead of navigating the
+  // current tab (which would block the job-posting window.open). The actual
+  // filename still comes from the response's Content-Disposition header.
+  a.download = "";
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 export async function downloadResume(
   tailoredId: string,
   format: "pdf" | "docx",
@@ -20,5 +43,7 @@ export async function downloadResume(
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  // Delay revoke so the download has time to start (revoking immediately can
+  // cancel it in some browsers).
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }

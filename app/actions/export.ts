@@ -9,7 +9,7 @@ import { getSettings, parseSectionOrder } from "@/lib/settings";
 import { getCurrentClient } from "@/lib/auth";
 import { normalizeTemplate } from "@/components/templates";
 import { buildResumeDocx } from "@/lib/export/docx";
-import { renderResumePdf, internalOrigin } from "@/lib/export/pdf";
+import { renderResumePdfCached, internalOrigin } from "@/lib/export/pdf";
 import { resumeFileName } from "@/lib/export/filename";
 import type { ResumeContent } from "@/lib/llm/schema";
 
@@ -40,7 +40,7 @@ export async function saveResumeToDownloads(
   // Admins can export any resume; clients only their own.
   const t = await prisma.tailoredResume.findFirst({
     where: client.role === "admin" ? { id: tailoredId } : { id: tailoredId, profile: { clientId: client.id } },
-    include: { profile: { select: { clientId: true } } },
+    include: { profile: { select: { clientId: true } }, job: { select: { role: true, company: true } } },
   });
   if (!t) return { ok: false, error: "Resume not found." };
 
@@ -48,7 +48,7 @@ export async function saveResumeToDownloads(
   const template = normalizeTemplate(override?.template ?? settings.defaultTemplate);
   const order = override?.order ? parseSectionOrder(override.order) : settings.sectionOrder;
   const content = t.content as ResumeContent;
-  const filename = resumeFileName(content.name, format);
+  const filename = resumeFileName(content.name, format, { role: t.job?.role, company: t.job?.company });
 
   let buf: Buffer;
   try {
@@ -56,7 +56,7 @@ export async function saveResumeToDownloads(
       buf = await buildResumeDocx(content, order);
     } else {
       const printUrl = `${internalOrigin()}/print/${tailoredId}?template=${encodeURIComponent(template)}&order=${encodeURIComponent(order.join(","))}`;
-      buf = await renderResumePdf(printUrl);
+      buf = await renderResumePdfCached(printUrl, `${tailoredId}|${template}|${order.join(",")}|${JSON.stringify(content)}`);
     }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Export failed." };
