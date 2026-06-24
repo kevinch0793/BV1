@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addJobUrls, setJobFromText, deleteJob, setApplyStatus, type ApplyStatus } from "@/app/actions/jobs";
-import { startPipeline, pipelineRunning, retryJob } from "@/app/actions/pipeline";
+import { startPipeline, pipelineRunning, ensurePipelineRunning, retryJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResumeNative } from "@/lib/exportClient";
 import { saveResumeToDownloads } from "@/app/actions/export";
@@ -97,11 +97,13 @@ export function PipelineDashboard({
     [jobs],
   );
 
-  // Resume the progress view if the pipeline is already running server-side
-  // (e.g. after navigating back to this page).
+  // On load, self-heal: resume the pipeline if it's already running, or restart
+  // it if there's unfinished work (pending jobs, or jobs left stuck in
+  // fetching/tailoring by a server restart). So just opening the dashboard gets
+  // a frozen run moving again.
   useEffect(() => {
-    pipelineRunning(profileId).then((r) => {
-      if (r) setPolling(true);
+    ensurePipelineRunning(profileId).then((r) => {
+      if (r.running) setPolling(true);
     });
   }, [profileId]);
 
@@ -311,10 +313,10 @@ function JobRow({
           </span>
         </td>
         <td className="px-4 py-3 font-medium text-neutral-900">
-          {job.role || <span className="text-neutral-400">—</span>}
-          {stage === "failed" && job.error && <p className="mt-0.5 text-xs font-normal text-red-600">{job.error}</p>}
+          <div className="max-w-[16rem] break-words">{job.role || <span className="text-neutral-400">—</span>}</div>
+          {stage === "failed" && job.error && <p className="mt-0.5 max-w-[16rem] text-xs font-normal break-words text-red-600">{job.error}</p>}
         </td>
-        <td className="px-4 py-3 text-neutral-700">{job.company || <span className="text-neutral-400">—</span>}</td>
+        <td className="px-4 py-3 text-neutral-700"><div className="max-w-[12rem] break-words">{job.company || <span className="text-neutral-400">—</span>}</div></td>
         <td className="px-4 py-3 text-neutral-700"><LocationCell workplace={job.workplace} location={job.location} /></td>
         <td className="px-4 py-3">
           {job.url ? (

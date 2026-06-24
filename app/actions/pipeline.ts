@@ -25,6 +25,34 @@ export async function pipelineRunning(profileId: string): Promise<boolean> {
   return isPipelineRunning(profileId);
 }
 
+/**
+ * Self-heal: if the pipeline isn't running but there's unfinished work — jobs
+ * still pending, or stuck in fetching/tailoring after a server restart, or
+ * fetched but not yet tailored — (re)start it. start() resets the stuck statuses
+ * before looping, so a frozen run resumes just by loading the dashboard.
+ */
+export async function ensurePipelineRunning(profileId: string): Promise<{ running: boolean }> {
+  const clientId = await assertOwnsProfile(profileId);
+  if (isPipelineRunning(profileId)) return { running: true };
+
+  const work = await prisma.jobPosting.count({
+    where: {
+      profileId,
+      OR: [
+        { status: "pending" },
+        { status: "fetching" },
+        { status: "tailoring" },
+        { status: "fetched", tailored: { none: {} } },
+      ],
+    },
+  });
+  if (work === 0) return { running: false };
+
+  const { defaultTemplate, tailoringModel } = await getSettings(clientId);
+  await start(profileId, { templateId: defaultTemplate, model: tailoringModel, clientId });
+  return { running: true };
+}
+
 /** Re-queue a failed job for another fetch+tailor pass. */
 export async function retryJob(jobId: string): Promise<void> {
   const clientId = await assertOwnsJob(jobId);

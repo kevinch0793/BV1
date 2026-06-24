@@ -59,5 +59,8 @@ export function briefState(location: string | null | undefined): string {
     const up = s.toUpperCase();
     if (/^[A-Z]{2}$/.test(up) && up !== "US") return up;
   }
-  return parts[0] ?? ""; // fallback: the city
+  // Fallback: the city — but capped, so a messy multi-city/descriptive location
+  // (e.g. "Greater Boston Area or New York City, USA") can't blow out the column.
+  const city = parts[0] ?? "";
+  return city.length > 14 ? `${city.slice(0, 13)}…` : city;
 }
