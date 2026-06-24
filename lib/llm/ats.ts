@@ -65,6 +65,16 @@ export async function computeFit(job: JobForLLM, beforeText: string, content: Re
   } catch {
     return { fitBefore: null, fitAfter: null, fitDetail: null };
   }
+  return scoreFit(skills, beforeText, content);
+}
+
+/**
+ * Deterministic before/after scoring once the JD skills are known (no LLM call).
+ * Lets callers extract JD skills in parallel with tailoring, then score here.
+ * Pass `skills = null` (e.g. extraction failed) to get a null fit.
+ */
+export function scoreFit(skills: JdSkills | null, beforeText: string, content: ResumeContent): FitSummary {
+  if (!skills) return { fitBefore: null, fitAfter: null, fitDetail: null };
   const before = scoreCoverage(skills, beforeText);
   const after = scoreCoverage(skills, resumeToText(content));
   return {

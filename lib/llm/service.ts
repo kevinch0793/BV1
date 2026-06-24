@@ -96,7 +96,11 @@ export async function tailorResume(args: {
     system: built.system,
     prompt: built.prompt,
     model: args.model ?? CLAUDE_TAILOR_MODEL,
-    maxTokens: 16000,
+    // A tailored resume is ~1.2-2k output tokens (measured). Anthropic reserves
+    // max_tokens against the per-minute output-token rate limit, so sustained
+    // throughput ≈ OTPM_budget ÷ this cap — keep it tight (but safely above the
+    // real max) so many tailor calls run in parallel instead of serializing.
+    maxTokens: 4000,
   });
   // Normalize en/em dashes to plain hyphens (humans don't type the long ones).
   return deepStripDashes(content);

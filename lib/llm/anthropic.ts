@@ -11,7 +11,9 @@ function getClient(): Anthropic {
     if (!process.env.ANTHROPIC_API_KEY) {
       throw new Error("ANTHROPIC_API_KEY is not set — add it to .env.");
     }
-    _client = new Anthropic();
+    // maxRetries 4 so transient 429 throttling self-heals (honoring retry-after)
+    // instead of failing a job mid-batch.
+    _client = new Anthropic({ maxRetries: 4 });
   }
   return _client;
 }
@@ -47,14 +49,29 @@ export async function generateStructured<T>({
   model?: string;
   maxTokens?: number;
 }): Promise<T> {
-  const response = await getClient().messages.parse({
-    model,
-    max_tokens: maxTokens,
-    system,
-    messages: [{ role: "user", content: content ?? prompt ?? "" }],
-    output_config: { format: zodOutputFormat(schema) },
-  });
+  const t0 = Date.now();
+  let response;
+  try {
+    response = await getClient().messages.parse({
+      model,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: "user", content: content ?? prompt ?? "" }],
+      output_config: { format: zodOutputFormat(schema) },
+    });
+  } catch (e) {
+    const status = (e as { status?: number })?.status;
+    if (status === 429) console.warn(`[llm] anthropic 429 (rate-limited) after ${Date.now() - t0}ms`);
+    throw e;
+  }
 
+  const ms = Date.now() - t0;
+  if (process.env.LLM_DEBUG) {
+    console.log(`[llm] ${model} ${ms}ms in=${response.usage?.input_tokens ?? "?"} out=${response.usage?.output_tokens ?? "?"}tok cap=${maxTokens} stop=${response.stop_reason}`);
+  }
+  if (response.stop_reason === "max_tokens") {
+    console.warn(`[llm] ${model} hit max_tokens cap (${maxTokens}) — output truncated`);
+  }
   if (!response.parsed_output) {
     throw new Error(
       `Model returned no structured output (stop_reason: ${response.stop_reason}).`,

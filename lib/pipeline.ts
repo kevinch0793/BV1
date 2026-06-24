@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { findJobDescription } from "@/lib/scrape/fetchHtml";
 import { extractJobFields, tailorResume } from "@/lib/llm/service";
 import { profileInclude, toProfileForLLM } from "@/lib/profile-data";
-import { computeFit, profileToText } from "@/lib/llm/ats";
+import { extractJdSkills, scoreFit, profileToText } from "@/lib/llm/ats";
 import { getCustomInstructions } from "@/lib/settings";
 import type { JobForLLM } from "@/lib/llm/prompts";
 
@@ -42,7 +42,10 @@ export async function startPipeline(profileId: string, opts: PipelineOpts): Prom
 }
 
 // Max jobs processed at once. Each runs its full fetch→tailor chain in parallel.
-const CONCURRENCY = 5;
+// Tuned to the Anthropic output-token/min budget (~30k OTPM measured): with the
+// tailor cap at 4000, ~7 concurrent tailor calls fit (7×4000=28k) before the
+// rate limit throttles. Override with PIPELINE_CONCURRENCY.
+const CONCURRENCY = Math.max(1, Number(process.env.PIPELINE_CONCURRENCY) || 7);
 
 async function loop(profileId: string): Promise<void> {
   const profile = await prisma.profile.findUnique({
@@ -151,17 +154,24 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
   try {
     const profileForLLM = toProfileForLLM(profile);
     const customInstructions = opts.clientId ? await getCustomInstructions(opts.clientId) : "";
-    const content = await tailorResume({
-      mode,
-      profile: profileForLLM,
-      job: jobFields,
-      baseResume: profile.baseResume?.rawText,
-      instructions: opts.instructions,
-      customInstructions,
-      model: opts.model,
-    });
+    const t0 = Date.now();
+    // The ATS skill-extraction only needs the JD, so run it in parallel with the
+    // (much slower) tailor call instead of after it.
+    const [content, skills] = await Promise.all([
+      tailorResume({
+        mode,
+        profile: profileForLLM,
+        job: jobFields,
+        baseResume: profile.baseResume?.rawText,
+        instructions: opts.instructions,
+        customInstructions,
+        model: opts.model,
+      }),
+      extractJdSkills(jobFields).catch(() => null),
+    ]);
     const beforeText = profile.baseResume?.rawText || profileToText(profileForLLM);
-    const fit = await computeFit(jobFields, beforeText, content);
+    const fit = scoreFit(skills, beforeText, content);
+    if (process.env.LLM_DEBUG) console.log(`[pipeline] tailor+ats job ${jobId} ${Date.now() - t0}ms`);
     await prisma.$transaction(async (tx) => {
       await tx.tailoredResume.deleteMany({ where: { jobPostingId: jobId } });
       await tx.tailoredResume.create({
