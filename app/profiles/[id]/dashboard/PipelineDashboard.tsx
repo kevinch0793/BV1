@@ -8,6 +8,7 @@ import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResumeNative } from "@/lib/exportClient";
 import { saveResumeToDownloads } from "@/app/actions/export";
 import { fitColor } from "@/lib/fit";
+import { locationKind, briefState, type Workplace } from "@/lib/location";
 
 type Job = {
   id: string;
@@ -41,15 +42,31 @@ function stageKey(job: Job): keyof typeof STAGE {
   return "pending";
 }
 
-function isRemote(job: Job): boolean {
-  return (job.location ?? "").trim().toLowerCase() === "remote";
+const WORKPLACE_STYLE: Record<Workplace, string> = {
+  Remote: "bg-emerald-100 text-emerald-700",
+  Hybrid: "bg-amber-100 text-amber-700",
+  Onsite: "bg-neutral-100 text-neutral-600",
+};
+
+// Location cell: explicit workplace mode (Remote / Hybrid / Onsite) + a brief
+// state for non-remote roles, e.g. "Onsite · CA".
+function LocationCell({ location }: { location: string | null }) {
+  if (!location) return <span className="text-neutral-400">—</span>;
+  const kind = locationKind(location);
+  const where = kind === "Remote" ? "" : briefState(location);
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${WORKPLACE_STYLE[kind]}`}>{kind}</span>
+      {where && <span className="text-neutral-500">{where}</span>}
+    </span>
+  );
 }
 
-// Display order: Fetchable+Remote first, then Fetchable+Onsite, then Unfetchable.
-// (Unfetchable = a job that failed to fetch its description.)
+// Display order: Remote → Hybrid → Onsite → Unfetchable (failed to fetch).
 function sortRank(job: Job): number {
-  if (stageKey(job) === "failed") return 2;
-  return isRemote(job) ? 0 : 1;
+  if (stageKey(job) === "failed") return 3;
+  const k = locationKind(job.location);
+  return k === "Remote" ? 0 : k === "Hybrid" ? 1 : 2;
 }
 
 export function PipelineDashboard({
@@ -296,7 +313,7 @@ function JobRow({
           {stage === "failed" && job.error && <p className="mt-0.5 text-xs font-normal text-red-600">{job.error}</p>}
         </td>
         <td className="px-4 py-3 text-neutral-700">{job.company || <span className="text-neutral-400">—</span>}</td>
-        <td className="px-4 py-3 text-neutral-700">{job.location || <span className="text-neutral-400">—</span>}</td>
+        <td className="px-4 py-3 text-neutral-700"><LocationCell location={job.location} /></td>
         <td className="px-4 py-3">
           {job.url ? (
             <button

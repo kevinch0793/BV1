@@ -131,7 +131,7 @@ export function buildExtractionPrompt(rawText: string) {
   return {
     system: [
       "You extract structured job-posting data from raw web page text. Return only what the page supports; leave fields empty if absent. Clean boilerplate (nav, cookie banners, footers) out of the description.",
-      "Location rule: if the role is remote in any form (fully remote, work-from-anywhere, or remote-within-a-region), output exactly the single word 'Remote' — nothing else. Only when the role is onsite or hybrid (has a real office) output the exact office location as city and state/region (and country when given), e.g. 'San Francisco, CA, US' or 'London, UK'. For hybrid, use the office city, not 'Remote'. If multiple offices, give a short comma/slash list of the actual cities. Never output empty parts or placeholder commas like ', ,'.",
+      "Location rule: classify the workplace mode and output accordingly. If fully remote (work-from-anywhere or remote-within-a-region), output exactly the single word 'Remote'. If hybrid (a mix of office and remote), output 'Hybrid, ' followed by the office location, e.g. 'Hybrid, San Francisco, CA, US'. If fully onsite, output just the office location as city and state/region (and country when given), e.g. 'San Francisco, CA, US' or 'London, UK'. Always include the real office city and state/region for hybrid and onsite. If multiple offices, give a short comma/slash list of the actual cities. Never output empty parts or placeholder commas like ', ,'.",
     ].join(" "),
     prompt: `Extract the company, role/title, location, the full job description, and a list of key requirements from this job posting page text:\n\n"""\n${clipped}\n"""`,
   };
