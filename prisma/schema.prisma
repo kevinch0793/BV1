@@ -114,6 +114,7 @@ model JobPosting {
   company           String?
   role              String?
   location          String?
+  workplace         String? // remote | hybrid | in-person | onsite (LLM-classified)
   descriptionRaw    String?
   descriptionParsed Json? // { description, requirements[] }
   status            String   @default("pending") // pending | fetched | failed

@@ -112,6 +112,7 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
         company: fields.company,
         role: fields.role,
         location: fields.location,
+        workplace: fields.workplace,
         descriptionRaw: fetched.text.slice(0, 20000),
         descriptionParsed: { description: fields.description, requirements: fields.requirements },
         status: "fetched",

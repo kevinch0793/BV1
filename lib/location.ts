@@ -16,8 +16,24 @@ const STATE_ABBR: Record<string, string> = {
 };
 const US_CODES = new Set(Object.values(STATE_ABBR));
 
-export type Workplace = "Remote" | "Hybrid" | "Onsite";
+export type Workplace = "Remote" | "Hybrid" | "In-Person" | "Onsite";
 
+const STORED_LABEL: Record<string, Workplace> = {
+  remote: "Remote",
+  hybrid: "Hybrid",
+  "in-person": "In-Person",
+  onsite: "Onsite",
+};
+
+// Resolve the workplace mode for display: prefer the LLM-classified value stored
+// on the job; for jobs fetched before classification existed, fall back to a
+// rough heuristic on the free-text location string.
+export function workplaceOf(stored: string | null | undefined, location: string | null | undefined): Workplace {
+  if (stored && STORED_LABEL[stored]) return STORED_LABEL[stored];
+  return locationKind(location);
+}
+
+// Heuristic fallback (can only ever yield Remote/Hybrid/Onsite from a location).
 export function locationKind(location: string | null | undefined): Workplace {
   const l = (location ?? "").toLowerCase();
   if (/\bhybrid\b/.test(l)) return "Hybrid";

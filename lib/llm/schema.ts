@@ -118,6 +118,10 @@ export const JobFieldsSchema = z.object({
   company: z.string(),
   role: z.string(),
   location: z.string(),
+  workplace: z
+    .enum(["remote", "hybrid", "in-person", "onsite"])
+    .describe("Workplace mode classified from the posting")
+    .catch("onsite"),
   description: z.string().describe("Full cleaned job description text"),
   requirements: z.array(z.string()).describe("Key requirements / qualifications"),
 });

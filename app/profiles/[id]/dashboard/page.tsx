@@ -48,6 +48,7 @@ export default async function ProfileDashboard({
     company: j.company,
     role: j.role,
     location: j.location,
+    workplace: j.workplace,
     status: j.status,
     error: j.error,
     tailoredId: tailoredByJob.get(j.id)?.id ?? null,

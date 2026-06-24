@@ -8,7 +8,7 @@ import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResumeNative } from "@/lib/exportClient";
 import { saveResumeToDownloads } from "@/app/actions/export";
 import { fitColor } from "@/lib/fit";
-import { locationKind, briefState, type Workplace } from "@/lib/location";
+import { workplaceOf, briefState, type Workplace } from "@/lib/location";
 
 type Job = {
   id: string;
@@ -16,6 +16,7 @@ type Job = {
   company: string | null;
   role: string | null;
   location: string | null;
+  workplace: string | null;
   status: string;
   error: string | null;
   tailoredId: string | null;
@@ -45,14 +46,15 @@ function stageKey(job: Job): keyof typeof STAGE {
 const WORKPLACE_STYLE: Record<Workplace, string> = {
   Remote: "bg-emerald-100 text-emerald-700",
   Hybrid: "bg-amber-100 text-amber-700",
+  "In-Person": "bg-orange-100 text-orange-700",
   Onsite: "bg-neutral-100 text-neutral-600",
 };
 
-// Location cell: explicit workplace mode (Remote / Hybrid / Onsite) + a brief
-// state for non-remote roles, e.g. "Onsite · CA".
-function LocationCell({ location }: { location: string | null }) {
-  if (!location) return <span className="text-neutral-400">—</span>;
-  const kind = locationKind(location);
+// Location cell: explicit workplace mode (Remote / Hybrid / In-Person / Onsite)
+// + a brief state for non-remote roles, e.g. "Onsite CA".
+function LocationCell({ workplace, location }: { workplace: string | null; location: string | null }) {
+  if (!workplace && !location) return <span className="text-neutral-400">—</span>;
+  const kind = workplaceOf(workplace, location);
   const where = kind === "Remote" ? "" : briefState(location);
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
@@ -62,11 +64,11 @@ function LocationCell({ location }: { location: string | null }) {
   );
 }
 
-// Display order: Remote → Hybrid → Onsite → Unfetchable (failed to fetch).
+// Display order: Remote → Hybrid → In-Person → Onsite → Unfetchable.
+const RANK: Record<Workplace, number> = { Remote: 0, Hybrid: 1, "In-Person": 2, Onsite: 3 };
 function sortRank(job: Job): number {
-  if (stageKey(job) === "failed") return 3;
-  const k = locationKind(job.location);
-  return k === "Remote" ? 0 : k === "Hybrid" ? 1 : 2;
+  if (stageKey(job) === "failed") return 4;
+  return RANK[workplaceOf(job.workplace, job.location)];
 }
 
 export function PipelineDashboard({
@@ -313,7 +315,7 @@ function JobRow({
           {stage === "failed" && job.error && <p className="mt-0.5 text-xs font-normal text-red-600">{job.error}</p>}
         </td>
         <td className="px-4 py-3 text-neutral-700">{job.company || <span className="text-neutral-400">—</span>}</td>
-        <td className="px-4 py-3 text-neutral-700"><LocationCell location={job.location} /></td>
+        <td className="px-4 py-3 text-neutral-700"><LocationCell workplace={job.workplace} location={job.location} /></td>
         <td className="px-4 py-3">
           {job.url ? (
             <button
