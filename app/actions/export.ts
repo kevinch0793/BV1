@@ -16,20 +16,20 @@ import type { ResumeContent } from "@/lib/llm/schema";
 type SaveResult = { ok: true; path: string } | { ok: false; error: string };
 
 /**
- * Generate the resume and write it into the local ~/Downloads folder, REMOVING
- * any existing file of the same name first so the new file lands with the same
- * name and no "(1)" / save dialog. This is a server-side filesystem write, so it
- * only does the overwrite when the server runs on the same machine as the user
- * (the local app); deployed clients fall back to a browser download.
+ * Generate the resume and write it straight into the local ~/Downloads folder
+ * (no save dialog). The filename is derived from the job (role/company/year), so
+ * re-downloading the same job overwrites it in place. This is a server-side
+ * filesystem write, so it only runs when the server is the same machine as the
+ * user (the local app); remote/tunneled clients fall back to a browser download.
  */
 export async function saveResumeToDownloads(
   tailoredId: string,
   format: "pdf" | "docx",
   override?: { template?: string; order?: string },
 ): Promise<SaveResult> {
-  // The ~/Downloads overwrite only makes sense when the browser and server are
-  // the same machine (local use). For a tunneled/remote request (e.g. ngrok),
-  // bail so the client falls back to a normal browser download.
+  // The direct ~/Downloads write only makes sense when the browser and server
+  // are the same machine (local use). For a tunneled/remote request (e.g.
+  // ngrok), bail so the client falls back to a normal browser download.
   const host = (await headers()).get("host")?.toLowerCase() ?? "";
   if (!/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host)) {
     return { ok: false, error: "remote" };
@@ -66,8 +66,7 @@ export async function saveResumeToDownloads(
     const dir = path.join(os.homedir(), "Downloads");
     await fs.mkdir(dir, { recursive: true });
     const dest = path.join(dir, filename);
-    await fs.rm(dest, { force: true }); // remove the old resume first
-    await fs.writeFile(dest, buf); // write the new one with the same name
+    await fs.writeFile(dest, buf); // overwrites in place if the same job was downloaded before
     return { ok: true, path: dest };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Could not write to Downloads." };

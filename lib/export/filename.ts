@@ -1,7 +1,7 @@
-// Export filename: "<FirstLast>_Resume_<role>_<company>_<yy>.<ext>",
-// e.g. "BrukeMammo_Resume_Software_Google_26.pdf". Kept brief: name is
-// first+last joined, role is the first ~8 letters, company is its first word,
-// and the year is 2 digits. Missing role/company are simply omitted.
+// Export filename, e.g. "BereketAbraham_Resume_StaffSof_Spark_26.pdf":
+// firstlast + "Resume" + role (first ~8 letters) + company (first word, the one
+// you're applying to) + 2-digit year. Different jobs differ by their role +
+// company; missing role/company are simply omitted.
 function alnum(s: string): string {
   return s.normalize("NFKD").replace(/[^a-zA-Z0-9]+/g, "");
 }
