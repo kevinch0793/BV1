@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { findJobDescription } from "@/lib/scrape/fetchHtml";
 import { extractJobFields, tailorResume } from "@/lib/llm/service";
 import { profileInclude, toProfileForLLM } from "@/lib/profile-data";
-import { extractJdSkills, scoreFit, profileToText } from "@/lib/llm/ats";
+import { extractJdSkills, scoreFit, profileToText, type JdSkills } from "@/lib/llm/ats";
 import { getCustomInstructions } from "@/lib/settings";
 import type { JobForLLM } from "@/lib/llm/prompts";
 
@@ -113,7 +113,34 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
   try {
     const te = Date.now();
     const fields = await extractJobFields(fetched.text);
-    if (process.env.LLM_DEBUG) console.log(`[pipeline] fetch job ${jobId} scrape=${scrapeMs}ms extract=${Date.now() - te}ms`);
+
+    // Guard: a stub / login-gated / JS-rendered page yields empty fields. Don't
+    // mark it "fetched" and tailor a junk resume off no real JD — fail it so the
+    // user can paste the description instead.
+    const desc = (fields.description ?? "").trim();
+    if (!fields.company?.trim() || !fields.role?.trim() || desc.length < 200) {
+      await prisma.jobPosting.update({
+        where: { id: jobId },
+        data: {
+          status: "failed",
+          error: "Couldn't read the job description on that page (it may be login-gated or JavaScript-rendered). Paste it instead.",
+        },
+      });
+      return false;
+    }
+
+    // Extract the ATS keyword list now and store it, so the tailor can be handed
+    // the exact list it will be graded on (see tailorJobNow).
+    const jobForSkills: JobForLLM = {
+      company: fields.company,
+      role: fields.role,
+      location: fields.location,
+      description: fields.description,
+      requirements: fields.requirements,
+    };
+    const atsSkills = await extractJdSkills(jobForSkills).catch(() => null);
+    if (process.env.LLM_DEBUG) console.log(`[pipeline] fetch job ${jobId} scrape=${scrapeMs}ms extract+skills=${Date.now() - te}ms`);
+
     await prisma.jobPosting.update({
       where: { id: jobId },
       data: {
@@ -122,7 +149,7 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
         location: fields.location,
         workplace: fields.workplace,
         descriptionRaw: fetched.text.slice(0, 20000),
-        descriptionParsed: { description: fields.description, requirements: fields.requirements },
+        descriptionParsed: { description: fields.description, requirements: fields.requirements, atsSkills },
         status: "fetched",
         error: null,
       },
@@ -147,7 +174,7 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
   if (mode === "from_scratch" && profile.experiences.length === 0) return false;
 
   await prisma.jobPosting.update({ where: { id: jobId }, data: { status: "tailoring" } });
-  const parsed = (job.descriptionParsed as { description?: string; requirements?: string[] }) ?? {};
+  const parsed = (job.descriptionParsed as { description?: string; requirements?: string[]; atsSkills?: JdSkills | null }) ?? {};
   const jobFields: JobForLLM = {
     company: job.company,
     role: job.role,
@@ -160,20 +187,19 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
     const profileForLLM = toProfileForLLM(profile);
     const customInstructions = opts.clientId ? await getCustomInstructions(opts.clientId) : "";
     const t0 = Date.now();
-    // The ATS skill-extraction only needs the JD, so run it in parallel with the
-    // (much slower) tailor call instead of after it.
-    const [content, skills] = await Promise.all([
-      tailorResume({
-        mode,
-        profile: profileForLLM,
-        job: jobFields,
-        baseResume: profile.baseResume?.rawText,
-        instructions: opts.instructions,
-        customInstructions,
-        model: opts.model,
-      }),
-      extractJdSkills(jobFields).catch(() => null),
-    ]);
+    // Use the ATS skills extracted+stored at fetch time so the tailor covers
+    // exactly what it's scored on; fall back to extracting now for older jobs.
+    const skills = parsed.atsSkills ?? (await extractJdSkills(jobFields).catch(() => null));
+    const content = await tailorResume({
+      mode,
+      profile: profileForLLM,
+      job: jobFields,
+      baseResume: profile.baseResume?.rawText,
+      instructions: opts.instructions,
+      customInstructions,
+      model: opts.model,
+      atsSkills: skills,
+    });
     const beforeText = profile.baseResume?.rawText || profileToText(profileForLLM);
     const fit = scoreFit(skills, beforeText, content);
     if (process.env.LLM_DEBUG) console.log(`[pipeline] tailor+ats job ${jobId} ${Date.now() - t0}ms`);

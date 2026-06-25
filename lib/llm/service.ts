@@ -15,6 +15,7 @@ import {
   buildExtractionPrompt,
   buildFromScratchPrompt,
   buildTailorWithBasePrompt,
+  type AtsSkills,
   type JobForLLM,
   type ProfileForLLM,
 } from "@/lib/llm/prompts";
@@ -71,6 +72,8 @@ export async function tailorResume(args: {
   /** The client's global custom instructions (resolved by the caller). */
   customInstructions?: string;
   model?: string;
+  /** The JD's ATS keyword list (so the tailor covers exactly what it's scored on). */
+  atsSkills?: AtsSkills | null;
 }): Promise<ResumeContent> {
   // The client's global custom instructions apply to every tailoring, layered
   // with any per-job instructions.
@@ -84,11 +87,13 @@ export async function tailorResume(args: {
           job: args.job,
           baseResume: args.baseResume,
           instructions,
+          atsSkills: args.atsSkills,
         })
       : buildFromScratchPrompt({
           profile: args.profile,
           job: args.job,
           instructions,
+          atsSkills: args.atsSkills,
         });
 
   // Tailoring runs on Claude (extraction stays on OpenAI). Claude follows the

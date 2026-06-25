@@ -30,7 +30,9 @@ export async function extractJdSkills(job: JobForLLM): Promise<JdSkills> {
     schemaName: "jd_skills",
     maxTokens: 2000,
     system:
-      "Extract the concrete, ATS-relevant skills from a job description: hard skills, tools, technologies, methods, and domain keywords a resume parser would scan for. Normalize to short canonical forms (e.g. 'Python', 'Kubernetes', 'distributed systems', 'A/B testing'). Split into mustHave (clearly required) and preferred (nice-to-have). No soft-skill fluff, no duplicates, no sentences.",
+      "Extract ONLY the concrete, ATS-scannable HARD skills from a job description — specific tools, technologies, languages, frameworks, platforms, methods, and domain keywords a resume parser scans for. Normalize each to its short canonical ATOMIC form (e.g. 'Python', 'Kubernetes', 'PostgreSQL', 'distributed systems', 'A/B testing'); split compounds like 'modern C++' -> 'C++'. " +
+      "EXCLUDE everything that is NOT a scannable skill: education/degrees ('Bachelor's degree', 'CS degree'), years-of-experience ('5+ years'), job titles, company names, and soft/vague phrases (communication, collaboration, mentorship, 'fast-paced', 'detail-oriented', 'decision-making', 'stakeholder management', 'emerging technologies', 'problem-solving'). " +
+      "Split into mustHave (clearly required) and preferred (nice-to-have). No duplicates, no sentences. Keep it tight: at most ~25 skills total.",
     prompt: jobText || "No job text provided.",
   });
 }
@@ -100,13 +102,46 @@ export function resumeToText(c: ResumeContent): string {
 
 const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9+#.\s/-]/g, " ").replace(/\s+/g, " ").trim();
 
+// Common abbreviation/synonym groups — any form counts as the others, so a resume
+// saying "K8s" still matches a JD skill of "Kubernetes" (and vice versa).
+const SYNONYM_GROUPS: string[][] = [
+  ["kubernetes", "k8s"],
+  ["javascript", "js"],
+  ["typescript", "ts"],
+  ["postgresql", "postgres"],
+  ["node.js", "nodejs", "node js"],
+  ["ci/cd", "cicd", "ci cd", "continuous integration"],
+  ["google cloud", "gcp", "google cloud platform"],
+  ["amazon web services", "aws"],
+  ["machine learning", "ml"],
+  ["artificial intelligence", "ai"],
+  ["natural language processing", "nlp"],
+  ["infrastructure as code", "iac"],
+  ["rest", "restful", "rest api", "rest apis"],
+  ["large language models", "llm", "llms"],
+  ["object oriented", "oop", "object-oriented"],
+];
+const SYN = new Map<string, string[]>();
+for (const g of SYNONYM_GROUPS) {
+  const forms = g.map(normalize);
+  for (const w of forms) SYN.set(w, forms);
+}
+
 function present(skill: string, haystack: string): boolean {
   const s = normalize(skill);
   if (!s) return false;
-  if (haystack.includes(s)) return true;
-  // Fallback: all word-tokens of the skill appear somewhere in the resume.
-  const tokens = s.split(" ").filter((t) => t.length > 1);
-  return tokens.length > 1 && tokens.every((t) => haystack.includes(t));
+  // Exact substring, or any synonym/abbreviation form.
+  for (const form of SYN.get(s) ?? [s]) {
+    if (haystack.includes(form)) return true;
+  }
+  // Multi-word skills: count it covered if a strong majority of its significant
+  // tokens appear (tolerates phrasing differences like "modern C++" vs "C++").
+  const tokens = s.split(" ").filter((t) => t.length > 2);
+  if (tokens.length >= 2) {
+    const need = Math.max(2, Math.ceil(tokens.length * 0.6));
+    if (tokens.filter((t) => haystack.includes(t)).length >= need) return true;
+  }
+  return false;
 }
 
 /** Weighted coverage of JD skills in a resume. Must-have skills weigh double. */

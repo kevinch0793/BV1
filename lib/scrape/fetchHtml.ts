@@ -195,7 +195,12 @@ async function tryGreenhouse(url: string): Promise<string | null> {
   const segs = u.pathname.split("/").filter(Boolean);
   const ghJid = u.searchParams.get("gh_jid");
 
-  if (onGh && segs[0]) {
+  if (onGh && segs[0] === "embed") {
+    // Embed widget: job-boards.greenhouse.io/embed/job_app?for=<board_token>&token=<job_id>
+    const token = u.searchParams.get("for");
+    const jid = ghJid || u.searchParams.get("token");
+    if (token && jid) candidates.push({ token, jid });
+  } else if (onGh && segs[0]) {
     const id = ghJid || (segs[1] === "jobs" ? segs[2] : segs.find((s) => /^\d+$/.test(s)));
     if (id) candidates.push({ token: segs[0], jid: id });
   } else if (ghJid) {
@@ -329,7 +334,9 @@ export async function findJobDescription(url: string): Promise<FetchResult> {
     if (looksLikeJD(b.text) || b.text.length > page.text.length * 1.2) return { ok: true, ...b };
   }
 
-  if (page.text.length >= 200) return { ok: true, text: page.text, sourceUrl: url };
+  // Last resort: accept a reasonably-sized page. A tiny page (~200 chars) is a
+  // stub/login/JS shell, not a JD — fail it so the user pastes the text.
+  if (page.text.length >= 400) return { ok: true, text: page.text, sourceUrl: url };
   return {
     ok: false,
     error: "Couldn't find a job description on that page (it may be login-gated or JavaScript-rendered). Paste the text instead.",

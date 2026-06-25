@@ -138,21 +138,38 @@ export function buildExtractionPrompt(rawText: string) {
   };
 }
 
+export type AtsSkills = { mustHave: string[]; preferred: string[] };
+
+// The exact ATS keyword list the resume will be graded against, handed to the
+// tailor so it covers what it's scored on (the #1 lever for ATS fit).
+function atsSkillsBlock(skills?: AtsSkills | null): string {
+  if (!skills || (!skills.mustHave?.length && !skills.preferred?.length)) return "";
+  const lines = ["# ATS keywords to cover (this resume is scanned for these EXACT terms)"];
+  if (skills.mustHave?.length) lines.push(`Must-have: ${skills.mustHave.join(", ")}`);
+  if (skills.preferred?.length) lines.push(`Preferred: ${skills.preferred.join(", ")}`);
+  lines.push(
+    "Cover EVERY must-have and preferred keyword the candidate can reasonably support: list them verbatim in the SKILLS section, and weave the most relevant into the bullets of the company/project where each best fits, using these EXACT terms. Prioritize must-haves. Do NOT invent employers, job titles, dates, degrees, or numeric metrics.",
+  );
+  return lines.join("\n");
+}
+
 // 2) Tailor from an existing base resume
 export function buildTailorWithBasePrompt(args: {
   profile: ProfileForLLM;
   baseResume: string;
   job: JobForLLM;
   instructions?: string;
+  atsSkills?: AtsSkills | null;
 }) {
   return {
     system: `You are an expert resume writer. You tailor an existing resume to a specific job description, producing a structured resume. ${TAILORING_RULES}\n\n${RESUME_GUIDELINES}`,
     prompt: [
       `# Job description\n${serializeJob(args.job)}`,
+      atsSkillsBlock(args.atsSkills),
       `# Candidate profile (supplementary facts)\n${serializeProfile(args.profile)}`,
       `# Candidate's existing base resume (primary source of truth)\n"""\n${args.baseResume.slice(0, 40000)}\n"""`,
       args.instructions ? `# Extra user instructions (follow these)\n${args.instructions}` : "",
-      `# Task\nRewrite and reorganize the base resume into a tailored resume strongly aligned with the job description. Group each company's bullets under its project subgroups (use the profile's project names/types as the authoritative themes). Weave the JD's must-have/preferred skills into the right company/project and the skills section. Honor the extra user instructions.`,
+      `# Task\nRewrite and reorganize the base resume into a tailored resume strongly aligned with the job description. Group each company's bullets under its project subgroups (use the profile's project names/types as the authoritative themes). Cover the ATS keywords listed above. Honor the extra user instructions.`,
     ]
       .filter(Boolean)
       .join("\n\n"),
@@ -164,14 +181,16 @@ export function buildFromScratchPrompt(args: {
   profile: ProfileForLLM;
   job: JobForLLM;
   instructions?: string;
+  atsSkills?: AtsSkills | null;
 }) {
   return {
     system: `You are an expert resume writer. You build a tailored resume from a candidate's structured profile when no base resume exists. ${TAILORING_RULES}\n- Each company's project subgroups (name + kind) are authoritative anchors — keep them, and expand each subgroup's bullets into JD-aligned, achievement-oriented points without inventing the underlying facts.\n\n${RESUME_GUIDELINES}`,
     prompt: [
       `# Job description\n${serializeJob(args.job)}`,
+      atsSkillsBlock(args.atsSkills),
       `# Candidate profile\n${serializeProfile(args.profile)}`,
       args.instructions ? `# Extra user instructions (follow these)\n${args.instructions}` : "",
-      `# Task\nGenerate a complete, tailored resume strongly aligned with the job description, built from the profile. Keep each company's project subgroups and expand their bullets into compelling, JD-relevant points. Weave the JD's must-have/preferred skills into the right company/project and the skills section. Write a summary aimed squarely at this role.`,
+      `# Task\nGenerate a complete, tailored resume strongly aligned with the job description, built from the profile. Keep each company's project subgroups and expand their bullets into compelling, JD-relevant points. Cover the ATS keywords listed above (skills section + relevant bullets). Write a summary aimed squarely at this role.`,
     ]
       .filter(Boolean)
       .join("\n\n"),
