@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { generateStructuredOpenAI, OPENAI_EXTRACT_MODEL } from "@/lib/llm/openai";
+import { generateStructuredExtract } from "@/lib/llm/balance";
 import type { ResumeContent } from "@/lib/llm/schema";
 import type { JobForLLM, ProfileForLLM } from "@/lib/llm/prompts";
 
@@ -25,10 +25,9 @@ export async function extractJdSkills(job: JobForLLM): Promise<JdSkills> {
     .filter(Boolean)
     .join("\n\n");
 
-  return generateStructuredOpenAI({
+  return generateStructuredExtract({
     schema: JdSkillsSchema,
     schemaName: "jd_skills",
-    model: OPENAI_EXTRACT_MODEL,
     maxTokens: 2000,
     system:
       "Extract the concrete, ATS-relevant skills from a job description: hard skills, tools, technologies, methods, and domain keywords a resume parser would scan for. Normalize to short canonical forms (e.g. 'Python', 'Kubernetes', 'distributed systems', 'A/B testing'). Split into mustHave (clearly required) and preferred (nice-to-have). No soft-skill fluff, no duplicates, no sentences.",

@@ -42,10 +42,11 @@ export async function startPipeline(profileId: string, opts: PipelineOpts): Prom
 }
 
 // Max jobs processed at once. Each runs its full fetch→tailor chain in parallel.
-// Tuned to the Anthropic output-token/min budget (~30k OTPM measured): with the
-// tailor cap at 4000, ~7 concurrent tailor calls fit (7×4000=28k) before the
-// rate limit throttles. Override with PIPELINE_CONCURRENCY.
-const CONCURRENCY = Math.max(1, Number(process.env.PIPELINE_CONCURRENCY) || 7);
+// Tailoring is the rate-limited stage; when both Anthropic and OpenRouter keys
+// are set, tailor calls are load-balanced across the two pools, so we can run
+// more in parallel. Override with PIPELINE_CONCURRENCY.
+const TWO_TAILOR_POOLS = !!process.env.ANTHROPIC_API_KEY && !!process.env.OPENROUTER_API_KEY;
+const CONCURRENCY = Math.max(1, Number(process.env.PIPELINE_CONCURRENCY) || (TWO_TAILOR_POOLS ? 12 : 7));
 
 async function loop(profileId: string): Promise<void> {
   const profile = await prisma.profile.findUnique({
@@ -102,13 +103,17 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
     return false;
   }
   await prisma.jobPosting.update({ where: { id: jobId }, data: { status: "fetching" } });
+  const ts = Date.now();
   const fetched = await findJobDescription(job.url);
+  const scrapeMs = Date.now() - ts;
   if (!fetched.ok) {
     await prisma.jobPosting.update({ where: { id: jobId }, data: { status: "failed", error: fetched.error } });
     return false;
   }
   try {
+    const te = Date.now();
     const fields = await extractJobFields(fetched.text);
+    if (process.env.LLM_DEBUG) console.log(`[pipeline] fetch job ${jobId} scrape=${scrapeMs}ms extract=${Date.now() - te}ms`);
     await prisma.jobPosting.update({
       where: { id: jobId },
       data: {
