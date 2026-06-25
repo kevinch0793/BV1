@@ -235,10 +235,7 @@ function ExperienceGroups({ t, projects }: { t: Theme; projects: ResumeContent["
       {groups.map((g, i) => (
         <div key={i} className="mt-1">
           {(g.name || g.type) && (
-            <div className={t.subgroupTitle}>
-              {g.name}
-              {g.type ? ` - ${g.type}` : ""}
-            </div>
+            <div className={t.subgroupTitle}>{`${g.name}${g.type ? ` - ${g.type}` : ""}`}</div>
           )}
           <Bullets items={g.bullets} />
         </div>
@@ -266,10 +263,7 @@ function ExperienceBlock({ t, r }: { t: Theme; r: ResumeContent }) {
             <span className={t.role}>{e.role}</span>
             <span className={t.date}>{dateRange(e.startDate, e.endDate)}</span>
           </div>
-          <div className={t.company}>
-            {e.company}
-            {e.location ? ` · ${e.location}` : ""}
-          </div>
+          <div className={t.company}>{`${e.company}${e.location ? ` · ${e.location}` : ""}`}</div>
           <ExperienceGroups t={t} projects={e.projects} />
         </div>
       ))}
@@ -298,9 +292,7 @@ function EducationBlock({ t, r }: { t: Theme; r: ResumeContent }) {
         <div key={i} className="flex items-baseline justify-between gap-2">
           <span>
             <span className="font-semibold">{ed.school}</span>
-            {ed.degree ? `, ${ed.degree}` : ""}
-            {ed.field ? `, ${ed.field}` : ""}
-            {ed.details ? ` (${ed.details})` : ""}
+            {`${ed.degree ? `, ${ed.degree}` : ""}${ed.field ? `, ${ed.field}` : ""}${ed.details ? ` (${ed.details})` : ""}`}
           </span>
           <span className={t.date}>{dateRange(ed.startDate, ed.endDate)}</span>
         </div>
