@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { profileWhere } from "@/lib/owner";
+import { profileWhere, ownedByProfileWhere } from "@/lib/owner";
 import { appDayRange, currentAppDayKey } from "@/lib/appday";
 import { createProfile } from "@/app/actions/profiles";
 
@@ -8,18 +8,31 @@ export const dynamic = "force-dynamic";
 
 export default async function ProfilesPage() {
   const today = appDayRange(currentAppDayKey());
-  const profiles = await prisma.profile.findMany({
-    where: await profileWhere(),
-    orderBy: { updatedAt: "desc" },
-    include: {
-      // Today's jobs only — for the card's applied/tailored counts.
-      jobs: {
-        where: { createdAt: { gte: today.start } },
-        select: { applyStatus: true, tailored: { take: 1, select: { id: true } } },
-      },
-      client: { select: { email: true } },
-    },
-  });
+  const jobScope = await ownedByProfileWhere();
+  // Load profiles, today's jobs (scalars), and the tailored job-id set
+  // separately, then join in memory — a `jobs.tailored` relation load builds a
+  // huge IN(...) on a busy day and trips libSQL's parameter limit (P2029).
+  const [profiles, todayJobs, tailored] = await Promise.all([
+    prisma.profile.findMany({
+      where: await profileWhere(),
+      orderBy: { updatedAt: "desc" },
+      include: { client: { select: { email: true } } },
+    }),
+    prisma.jobPosting.findMany({
+      where: { ...jobScope, createdAt: { gte: today.start } },
+      select: { id: true, profileId: true, applyStatus: true },
+    }),
+    prisma.tailoredResume.findMany({ where: { ...jobScope, jobPostingId: { not: null } }, select: { jobPostingId: true } }),
+  ]);
+
+  const tailoredJobIds = new Set(tailored.map((t) => t.jobPostingId));
+  const todayByProfile = new Map<string, { applied: number; tailored: number }>();
+  for (const j of todayJobs) {
+    const e = todayByProfile.get(j.profileId) ?? { applied: 0, tailored: 0 };
+    if (j.applyStatus === "applied") e.applied++;
+    if (tailoredJobIds.has(j.id)) e.tailored++;
+    todayByProfile.set(j.profileId, e);
+  }
 
   return (
     <div className="space-y-8">
@@ -51,8 +64,8 @@ export default async function ProfilesPage() {
                 href={`/profiles/${p.id}/dashboard`}
                 className="block rounded-b-xl border-t border-neutral-100 px-4 py-2 text-xs font-medium text-neutral-500 hover:bg-sky-50 hover:text-sky-700"
               >
-                Today: {p.jobs.filter((j) => j.applyStatus === "applied").length} applied ·{" "}
-                {p.jobs.filter((j) => j.tailored.length > 0).length} tailored →
+                Today: {todayByProfile.get(p.id)?.applied ?? 0} applied ·{" "}
+                {todayByProfile.get(p.id)?.tailored ?? 0} tailored →
               </Link>
             </li>
           ))}

@@ -11,25 +11,36 @@ export default async function Dashboard() {
   const dayKeys = recentAppDayKeys(30); // last 30 app days, ascending
   const chartStart = appDayRange(dayKeys[0]).start;
 
-  const [profiles, appliedJobs] = await Promise.all([
+  const jobScope = await ownedByProfileWhere();
+  const [profiles, todayJobs, tailored, appliedJobs] = await Promise.all([
     prisma.profile.findMany({
       where: await profileWhere(),
       orderBy: { updatedAt: "desc" },
-      include: {
-        client: { select: { email: true } },
-        // Today's jobs only — for the card's applied/tailored counts.
-        jobs: {
-          where: { createdAt: { gte: today.start } },
-          select: { applyStatus: true, tailored: { take: 1, select: { id: true } } },
-        },
-      },
+      include: { client: { select: { email: true } } },
     }),
+    // Today's jobs (scalars) + the set of tailored job ids, joined in memory for
+    // the card counts — avoids a relation load that builds a huge IN(...) over
+    // every job on a busy day (libSQL bound-parameter limit, P2029).
+    prisma.jobPosting.findMany({
+      where: { ...jobScope, createdAt: { gte: today.start } },
+      select: { id: true, profileId: true, applyStatus: true },
+    }),
+    prisma.tailoredResume.findMany({ where: { ...jobScope, jobPostingId: { not: null } }, select: { jobPostingId: true } }),
     // Applied events (last 30 app days) for the "applications per day" chart.
     prisma.jobPosting.findMany({
-      where: { ...(await ownedByProfileWhere()), applyStatus: "applied", appliedAt: { gte: chartStart } },
+      where: { ...jobScope, applyStatus: "applied", appliedAt: { gte: chartStart } },
       select: { profileId: true, appliedAt: true },
     }),
   ]);
+
+  const tailoredJobIds = new Set(tailored.map((t) => t.jobPostingId));
+  const todayByProfile = new Map<string, { applied: number; tailored: number }>();
+  for (const j of todayJobs) {
+    const e = todayByProfile.get(j.profileId) ?? { applied: 0, tailored: 0 };
+    if (j.applyStatus === "applied") e.applied++;
+    if (tailoredJobIds.has(j.id)) e.tailored++;
+    todayByProfile.set(j.profileId, e);
+  }
 
   const events = appliedJobs.map((j) => ({ profileId: j.profileId, day: appDayKey(j.appliedAt!) }));
   const chartProfiles = profiles.map((p) => ({ id: p.id, name: p.fullName || p.label }));
@@ -66,8 +77,8 @@ export default async function Dashboard() {
                   href={`/profiles/${p.id}/dashboard`}
                   className="block rounded-b-xl border-t border-neutral-100 px-4 py-2 text-xs font-medium text-neutral-500 hover:bg-sky-50 hover:text-sky-700"
                 >
-                  Today: {p.jobs.filter((j) => j.applyStatus === "applied").length} applied ·{" "}
-                  {p.jobs.filter((j) => j.tailored.length > 0).length} tailored →
+                  Today: {todayByProfile.get(p.id)?.applied ?? 0} applied ·{" "}
+                  {todayByProfile.get(p.id)?.tailored ?? 0} tailored →
                 </Link>
               </div>
             ))}

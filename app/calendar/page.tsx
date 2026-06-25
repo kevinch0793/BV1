@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { ownedByProfileWhere } from "@/lib/owner";
+import { ownedByProfileWhere, profileWhere } from "@/lib/owner";
 import { appDayKey, appDayRange } from "@/lib/appday";
 import { CalendarView, type DayEntry } from "@/components/CalendarView";
 
@@ -30,25 +30,32 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const queryStart = appDayRange(`${year}-${pad(month + 1)}-01`).start;
   const queryEnd = appDayRange(`${year}-${pad(month + 1)}-${pad(lastDay)}`).end;
 
-  // Jobs grouped by the app day they were added (matches the dashboard's day
-  // view), so clicking a day opens exactly that day's job table.
-  const jobs = await prisma.jobPosting.findMany({
-    where: { ...(await ownedByProfileWhere()), createdAt: { gte: queryStart, lt: queryEnd } },
-    select: {
-      createdAt: true,
-      profileId: true,
-      applyStatus: true,
-      profile: { select: { fullName: true } },
-      tailored: { take: 1, select: { id: true } },
-    },
-  });
+  const jobScope = await ownedByProfileWhere();
+  // Load scalars + the relations SEPARATELY and join in memory. Including the
+  // `profile`/`tailored` relations on hundreds of jobs makes Prisma emit an
+  // `IN (...)` over every job id, which exceeds libSQL's bound-parameter limit
+  // (P2029). These three queries each use a join/range filter, no big IN.
+  const [jobs, profiles, tailored] = await Promise.all([
+    prisma.jobPosting.findMany({
+      where: { ...jobScope, createdAt: { gte: queryStart, lt: queryEnd } },
+      select: { id: true, createdAt: true, profileId: true, applyStatus: true },
+    }),
+    prisma.profile.findMany({ where: await profileWhere(), select: { id: true, fullName: true } }),
+    prisma.tailoredResume.findMany({
+      where: { ...jobScope, jobPostingId: { not: null } },
+      select: { jobPostingId: true },
+    }),
+  ]);
+
+  const nameById = new Map(profiles.map((p) => [p.id, p.fullName]));
+  const tailoredJobIds = new Set(tailored.map((t) => t.jobPostingId));
 
   const entries: DayEntry[] = jobs.map((j) => ({
     day: Number(appDayKey(j.createdAt).split("-")[2]),
     profileId: j.profileId,
-    profileLabel: j.profile.fullName,
+    profileLabel: nameById.get(j.profileId) ?? "",
     applied: j.applyStatus === "applied",
-    tailored: j.tailored.length > 0,
+    tailored: tailoredJobIds.has(j.id),
   }));
 
   return (

@@ -40,10 +40,10 @@ function normalizeUrls(raw: string): string[] {
 export async function addJobUrls(
   profileId: string,
   formData: FormData,
-): Promise<{ ok: boolean; added: number; skipped: number; created: { id: string; url: string | null }[]; error?: string }> {
+): Promise<{ ok: boolean; added: number; skipped: number; error?: string }> {
   await assertOwnsProfile(profileId);
   const urls = normalizeUrls(String(formData.get("urls") ?? ""));
-  if (urls.length === 0) return { ok: false, added: 0, skipped: 0, created: [], error: "Enter at least one URL." };
+  if (urls.length === 0) return { ok: false, added: 0, skipped: 0, error: "Enter at least one URL." };
 
   // Skip any URL already on this profile (compare normalized on both sides).
   const existing = await prisma.jobPosting.findMany({ where: { profileId }, select: { url: true } });
@@ -51,18 +51,13 @@ export async function addJobUrls(
   const fresh = urls.filter((u) => !have.has(u));
   const skipped = urls.length - fresh.length;
 
-  let created: { id: string; url: string | null }[] = [];
   if (fresh.length) {
     await prisma.jobPosting.createMany({
       data: fresh.map((url) => ({ profileId, url, status: "pending" })),
     });
-    created = await prisma.jobPosting.findMany({
-      where: { profileId, url: { in: fresh } },
-      select: { id: true, url: true },
-    });
   }
   revalidatePath(`/profiles/${profileId}/dashboard`);
-  return { ok: true, added: fresh.length, skipped, created };
+  return { ok: true, added: fresh.length, skipped };
 }
 
 /** Scrape + extract a single job. Called one-at-a-time by the queue. */
