@@ -107,17 +107,21 @@ export function PipelineDashboard({
     });
   }, [profileId]);
 
-  // While polling, refresh the table and stop once the server reports idle. The
-  // interval is intentionally relaxed: each refresh refetches the whole route,
-  // which is costly over a tunnel, so polling too often makes the page feel laggy.
+  // Poll the (cheap) running-check every 5s, but refetch the whole table — the
+  // heavy part over a tunnel (lots of bandwidth) — only every ~15s, plus once
+  // more the moment the run finishes. Keeps progress fresh without burning data.
   useEffect(() => {
     if (!polling) return;
     let active = true;
+    let ticks = 0;
     const id = setInterval(async () => {
-      router.refresh();
       const still = await pipelineRunning(profileId);
-      if (active && !still) {
+      if (!active) return;
+      ticks += 1;
+      if (!still) {
         setPolling(false);
+        router.refresh();
+      } else if (ticks % 3 === 0) {
         router.refresh();
       }
     }, 5000);
