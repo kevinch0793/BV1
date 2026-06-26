@@ -2,7 +2,19 @@ import type { ResumeContent } from "@/lib/llm/schema";
 import { deepStripDashes } from "@/lib/sanitize";
 import { SECTION_KEYS, type SectionKey } from "@/lib/sections";
 
-export type TemplateId = "modern" | "minimal" | "bold" | "elegant" | "tech" | "slate";
+export type TemplateId =
+  | "modern"
+  | "minimal"
+  | "bold"
+  | "elegant"
+  | "tech"
+  | "slate"
+  | "navy"
+  | "emerald"
+  | "rose"
+  | "amber"
+  | "violet"
+  | "stone";
 
 export const DEFAULT_TEMPLATE: TemplateId = "modern";
 
@@ -156,6 +168,130 @@ const THEMES: Record<TemplateId, Theme> = {
     company: "text-[12px] font-medium text-slate-600",
     date: "text-[11px] text-slate-400",
     subgroupTitle: "mt-1 font-semibold text-slate-700",
+  },
+  navy: {
+    id: "navy",
+    label: "Executive",
+    description: "Deep navy, serif name, corporate split header.",
+    root: "font-sans text-[12.5px] leading-snug text-neutral-800 text-justify",
+    header: "split",
+    headerWrap: "mb-3 flex items-end justify-between gap-3 border-b-2 border-blue-900 pb-2",
+    name: "font-serif text-[26px] font-bold tracking-tight text-blue-950",
+    title: "text-sm font-medium text-blue-800",
+    contactWrap: "flex flex-col items-end gap-0.5 text-right",
+    contact: "text-[11px] text-neutral-600",
+    link: "text-blue-800 underline",
+    sectionVariant: "sideRule",
+    rule: "bg-blue-200",
+    sectionWrap: "mb-3",
+    sectionTitle: "text-[11px] font-bold uppercase tracking-[0.18em] text-blue-900",
+    role: "font-semibold text-neutral-900",
+    company: "text-[12px] font-medium text-blue-800",
+    date: "text-[11px] text-neutral-500",
+    subgroupTitle: "mt-1 font-serif font-semibold text-blue-900",
+  },
+  emerald: {
+    id: "emerald",
+    label: "Forest",
+    description: "Emerald accent rail with hairline section rules.",
+    root: "font-sans text-[12.5px] leading-snug text-neutral-800 text-justify",
+    header: "leftAccent",
+    headerWrap: "mb-3 border-l-4 border-emerald-600 pl-3",
+    name: "text-2xl font-bold text-neutral-900",
+    title: "text-sm font-medium text-emerald-700",
+    contactWrap: "mt-1 flex flex-wrap gap-x-3 gap-y-0.5",
+    contact: "text-[12px] text-neutral-600",
+    link: "text-emerald-700 underline",
+    sectionVariant: "sideRule",
+    rule: "bg-emerald-200",
+    sectionWrap: "mb-3",
+    sectionTitle: "text-[12px] font-bold uppercase tracking-[0.16em] text-emerald-700",
+    role: "font-semibold text-neutral-900",
+    company: "text-[12px] font-medium text-emerald-700",
+    date: "text-[11px] text-neutral-500",
+    subgroupTitle: "mt-1 font-semibold text-emerald-700",
+  },
+  rose: {
+    id: "rose",
+    label: "Rosewood",
+    description: "Centered serif headings in warm rose.",
+    root: "font-sans text-[12.5px] leading-snug text-neutral-800 text-justify",
+    header: "center",
+    headerWrap: "mb-3 text-center",
+    name: "font-serif text-3xl font-bold tracking-tight text-rose-900",
+    title: "font-serif text-sm italic text-rose-700",
+    contactWrap: "mt-1 flex flex-wrap justify-center gap-x-3 gap-y-0.5",
+    contact: "text-[11.5px] text-neutral-600",
+    link: "text-rose-700 underline",
+    sectionVariant: "plain",
+    sectionWrap: "mb-3",
+    sectionTitle:
+      "mb-1.5 border-b border-rose-200 pb-0.5 text-center font-serif text-[13px] font-semibold uppercase tracking-[0.15em] text-rose-800",
+    role: "font-serif font-semibold text-neutral-900",
+    company: "font-serif text-[12px] italic text-rose-700",
+    date: "text-[11px] text-neutral-500",
+    subgroupTitle: "mt-1 font-serif font-semibold italic text-rose-800",
+  },
+  amber: {
+    id: "amber",
+    label: "Amber",
+    description: "Warm amber split header, clean sans-serif.",
+    root: "font-sans text-[12.5px] leading-snug text-neutral-800 text-justify",
+    header: "split",
+    headerWrap: "mb-3 flex items-end justify-between gap-3 border-b border-amber-400 pb-2",
+    name: "text-[26px] font-extrabold tracking-tight text-neutral-900",
+    title: "text-sm font-semibold text-amber-700",
+    contactWrap: "flex flex-col items-end gap-0.5 text-right",
+    contact: "text-[11px] text-neutral-600",
+    link: "text-amber-700 underline",
+    sectionVariant: "plain",
+    sectionWrap: "mb-3",
+    sectionTitle: "mb-1 text-[12px] font-bold uppercase tracking-[0.18em] text-amber-700",
+    role: "font-semibold text-neutral-900",
+    company: "text-[12px] font-medium text-amber-700",
+    date: "text-[11px] text-neutral-500",
+    subgroupTitle: "mt-1 font-semibold text-amber-700",
+  },
+  violet: {
+    id: "violet",
+    label: "Orchid",
+    description: "Violet bar-marked section titles, clean sans-serif.",
+    root: "font-sans text-[12.5px] leading-snug text-neutral-800 text-justify",
+    header: "left",
+    headerWrap: "mb-3",
+    name: "text-2xl font-bold tracking-tight text-violet-900",
+    title: "text-sm font-medium text-violet-600",
+    contactWrap: "mt-1 flex flex-wrap gap-x-3 gap-y-0.5",
+    contact: "text-[12px] text-neutral-600",
+    link: "text-violet-700 underline",
+    sectionVariant: "plain",
+    sectionWrap: "mb-3",
+    sectionTitle: "mb-1 border-l-2 border-violet-500 pl-2 text-[12px] font-bold uppercase tracking-[0.16em] text-violet-700",
+    role: "font-semibold text-neutral-900",
+    company: "text-[12px] font-medium text-violet-700",
+    date: "text-[11px] text-neutral-500",
+    subgroupTitle: "mt-1 font-semibold text-violet-700",
+  },
+  stone: {
+    id: "stone",
+    label: "Manuscript",
+    description: "Fully serif, warm stone tones, hairline rules.",
+    root: "font-serif text-[12.5px] leading-relaxed text-stone-800 text-justify",
+    header: "left",
+    headerWrap: "mb-3",
+    name: "text-[27px] font-bold tracking-tight text-stone-900",
+    title: "text-sm italic text-stone-600",
+    contactWrap: "mt-1 flex flex-wrap gap-x-3 gap-y-0.5",
+    contact: "text-[11.5px] text-stone-500",
+    link: "text-stone-700 underline",
+    sectionVariant: "sideRule",
+    rule: "bg-stone-300",
+    sectionWrap: "mb-3",
+    sectionTitle: "text-[12px] font-semibold uppercase tracking-[0.18em] text-stone-700",
+    role: "font-semibold text-stone-900",
+    company: "text-[12px] italic text-stone-600",
+    date: "text-[11px] text-stone-400",
+    subgroupTitle: "mt-1 font-semibold italic text-stone-700",
   },
 };
 
