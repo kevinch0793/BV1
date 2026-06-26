@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { profileWhere, ownedByProfileWhere } from "@/lib/owner";
 import { appDayRange, currentAppDayKey } from "@/lib/appday";
 import { createProfile } from "@/app/actions/profiles";
+import { ProfileTemplateBadge } from "@/components/ProfileTemplateBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +55,8 @@ export default async function ProfilesPage() {
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {profiles.map((p) => (
-            <li key={p.id} className="rounded-xl border border-neutral-200 bg-white transition hover:border-sky-300 hover:shadow-sm">
+            <li key={p.id} className="relative rounded-xl border border-neutral-200 bg-white transition hover:border-sky-300 hover:shadow-sm">
+              <ProfileTemplateBadge profileId={p.id} current={p.templateId} />
               <Link href={`/profiles/${p.id}`} className="block p-4">
                 <div className="text-sm font-medium text-sky-700">{p.label}</div>
                 <div className="text-lg font-semibold text-neutral-900">{p.fullName}</div>

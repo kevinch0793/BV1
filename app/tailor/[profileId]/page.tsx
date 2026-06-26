@@ -34,7 +34,7 @@ export default async function TailorPage({ params }: { params: Promise<{ profile
         hasBaseResume={!!profile.baseResume}
         projectCount={profile._count.experiences}
         order={sectionOrder}
-        defaultTemplate={defaultTemplate}
+        defaultTemplate={profile.templateId ?? defaultTemplate}
         jobs={profile.jobs.map((j) => ({
           id: j.id,
           label: `${j.role || "Role?"} · ${j.company || "Company?"}`,

@@ -81,15 +81,16 @@ export type TailoredPreview = {
 export async function previewTailored(tailoredId: string): Promise<TailoredPreview | null> {
   const t = await prisma.tailoredResume.findFirst({
     where: { id: tailoredId, ...(await ownedByProfileWhere()) },
-    include: { profile: { select: { clientId: true } } },
+    include: { profile: { select: { clientId: true, templateId: true } } },
   });
   if (!t) return null;
-  // Render with the owner's Settings template/order so a Settings change is
-  // reflected immediately (not the per-resume template saved at tailor time).
+  // Render with the profile's template (or the owner's Settings default) so a
+  // change is reflected immediately — not the per-resume template saved at
+  // tailor time.
   const { sectionOrder, defaultTemplate } = await getSettings(t.profile.clientId);
   return {
     content: t.content as ResumeContent,
-    template: defaultTemplate,
+    template: t.profile.templateId ?? defaultTemplate,
     order: sectionOrder,
     fitBefore: t.fitBefore,
     fitAfter: t.fitAfter,

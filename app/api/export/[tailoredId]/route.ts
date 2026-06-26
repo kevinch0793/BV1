@@ -22,7 +22,7 @@ export async function GET(
   // Admins can export any resume; clients only their own.
   const t = await prisma.tailoredResume.findFirst({
     where: client.role === "admin" ? { id: tailoredId } : { id: tailoredId, profile: { clientId: client.id } },
-    include: { profile: { select: { clientId: true } }, job: { select: { role: true, company: true } } },
+    include: { profile: { select: { clientId: true, templateId: true } }, job: { select: { role: true, company: true } } },
   });
   if (!t) return new NextResponse("Not found", { status: 404 });
 
@@ -32,7 +32,7 @@ export async function GET(
   // Template/order come from global Settings unless explicitly overridden (the
   // viewer's live picker passes them); the saved templateId is not used so a
   // Settings change applies to every existing resume too.
-  const template = normalizeTemplate(url.searchParams.get("template") ?? settings.defaultTemplate);
+  const template = normalizeTemplate(url.searchParams.get("template") ?? t.profile.templateId ?? settings.defaultTemplate);
   const orderParam = url.searchParams.get("order");
   const order = orderParam ? parseSectionOrder(orderParam) : settings.sectionOrder;
 

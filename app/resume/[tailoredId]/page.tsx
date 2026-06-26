@@ -13,7 +13,7 @@ export default async function ResumeViewer({ params }: { params: Promise<{ tailo
   const { tailoredId } = await params;
   const t = await prisma.tailoredResume.findFirst({
     where: { id: tailoredId, ...(await ownedByProfileWhere()) },
-    include: { job: true, profile: { select: { clientId: true } } },
+    include: { job: true, profile: { select: { clientId: true, templateId: true } } },
   });
   if (!t) notFound();
 
@@ -34,7 +34,7 @@ export default async function ResumeViewer({ params }: { params: Promise<{ tailo
       <SavedResumeView
         tailoredId={t.id}
         content={t.content as ResumeContent}
-        templateId={normalizeTemplate(defaultTemplate)}
+        templateId={normalizeTemplate(t.profile.templateId ?? defaultTemplate)}
         order={sectionOrder}
         fitBefore={t.fitBefore}
         fitAfter={t.fitAfter}

@@ -24,11 +24,11 @@ export default async function PrintPage({
   // (/api/export) enforces ownership; this is render-only HTML.
   const t = await prisma.tailoredResume.findUnique({
     where: { id: tailoredId },
-    include: { profile: { select: { clientId: true } } },
+    include: { profile: { select: { clientId: true, templateId: true } } },
   });
   if (!t) notFound();
 
-  const template = normalizeTemplate(sp.template ?? t.templateId);
+  const template = normalizeTemplate(sp.template ?? t.profile.templateId ?? t.templateId);
   const order = sp.order ? parseSectionOrder(sp.order) : (await getSettings(t.profile.clientId)).sectionOrder;
 
   return (

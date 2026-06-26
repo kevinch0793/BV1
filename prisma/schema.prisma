@@ -50,6 +50,7 @@ model Profile {
   location  String?
   links     Json? // { linkedin, github, portfolio, ... }
   summary   String?
+  templateId String? // per-profile template override; null = use the client default
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

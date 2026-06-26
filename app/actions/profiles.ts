@@ -322,3 +322,11 @@ export async function saveBaseResume(profileId: string, formData: FormData) {
   }
   revalidatePath(`/profiles/${profileId}`);
 }
+
+/** Set a profile's resume-template override (null/"" = use the client default). */
+export async function setProfileTemplate(profileId: string, templateId: string | null): Promise<void> {
+  await assertOwnsProfile(profileId);
+  await prisma.profile.update({ where: { id: profileId }, data: { templateId: templateId || null } });
+  revalidatePath("/");
+  revalidatePath("/profiles");
+}

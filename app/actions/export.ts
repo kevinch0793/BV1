@@ -40,12 +40,12 @@ export async function saveResumeToDownloads(
   // Admins can export any resume; clients only their own.
   const t = await prisma.tailoredResume.findFirst({
     where: client.role === "admin" ? { id: tailoredId } : { id: tailoredId, profile: { clientId: client.id } },
-    include: { profile: { select: { clientId: true } }, job: { select: { role: true, company: true } } },
+    include: { profile: { select: { clientId: true, templateId: true } }, job: { select: { role: true, company: true } } },
   });
   if (!t) return { ok: false, error: "Resume not found." };
 
   const settings = await getSettings(t.profile.clientId);
-  const template = normalizeTemplate(override?.template ?? settings.defaultTemplate);
+  const template = normalizeTemplate(override?.template ?? t.profile.templateId ?? settings.defaultTemplate);
   const order = override?.order ? parseSectionOrder(override.order) : settings.sectionOrder;
   const content = t.content as ResumeContent;
   const filename = resumeFileName(content.name, format, { role: t.job?.role, company: t.job?.company });
