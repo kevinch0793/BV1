@@ -16,7 +16,10 @@ export default async function ProfilesPage() {
   const [profiles, todayJobs, tailored] = await Promise.all([
     prisma.profile.findMany({
       where: await profileWhere(),
-      orderBy: { updatedAt: "desc" },
+      // Stable creation order — editing a profile (e.g. changing its template)
+      // bumps updatedAt, and ordering by that made the card jump position, which
+      // looked like templates were moving between profiles.
+      orderBy: { createdAt: "asc" },
       include: { client: { select: { email: true } } },
     }),
     prisma.jobPosting.findMany({
