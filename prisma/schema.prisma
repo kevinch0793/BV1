@@ -143,6 +143,6 @@ model TailoredResume {
   content      Json // ResumeContent
   fitBefore    Int? // ATS keyword-coverage % of the base resume (before tailoring)
   fitAfter     Int? // ATS keyword-coverage % of this tailored resume
-  fitDetail    Json? // { jdSkills:{mustHave,preferred}, matched:[], missing:[] }
+  fitDetail    Json? // { jdSkills:{hardSkills,themes}, matched:[], missing:[] }
   createdAt    DateTime    @default(now())
 }

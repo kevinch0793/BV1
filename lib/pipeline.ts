@@ -188,8 +188,11 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
     const customInstructions = opts.clientId ? await getCustomInstructions(opts.clientId) : "";
     const t0 = Date.now();
     // Use the ATS skills extracted+stored at fetch time so the tailor covers
-    // exactly what it's scored on; fall back to extracting now for older jobs.
-    const skills = parsed.atsSkills ?? (await extractJdSkills(jobFields).catch(() => null));
+    // exactly what it's scored on. Only reuse them if they're the current
+    // {hardSkills, themes} shape; older jobs stored {mustHave, preferred} (or
+    // nothing) — re-extract those so they get the new categorization.
+    const stored = parsed.atsSkills && Array.isArray(parsed.atsSkills.hardSkills) ? parsed.atsSkills : null;
+    const skills = stored ?? (await extractJdSkills(jobFields).catch(() => null));
     const content = await tailorResume({
       mode,
       profile: profileForLLM,

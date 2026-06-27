@@ -4,17 +4,26 @@ import type { ResumeContent } from "@/lib/llm/schema";
 import type { JobForLLM, ProfileForLLM } from "@/lib/llm/prompts";
 
 // ATS-style keyword/skill coverage (à la Jobscan): extract the JD's skills, then
-// deterministically measure how many appear in a resume. Must-haves weigh more.
+// deterministically measure how many appear in a resume. We split the JD into
+// two kinds of keywords so the resume doesn't keyword-stuff:
+//   - hardSkills: concrete named tech/tools — fine to LIST in a Skills section.
+//   - themes: conceptual/activity phrases (multi-tenant, migration, ...) — only
+//     legitimate when DEMONSTRATED in a bullet, never listed as a "skill".
+// hardSkills weigh more in scoring; themes count only where genuinely present.
 
-export type JdSkills = { mustHave: string[]; preferred: string[] };
+export type JdSkills = { hardSkills: string[]; themes: string[] };
 export type FitResult = { score: number; matched: string[]; missing: string[] };
 
 const JdSkillsSchema = z.object({
-  mustHave: z.array(z.string()).describe("Required hard skills/tools/technologies/keywords"),
-  preferred: z.array(z.string()).describe("Nice-to-have skills/keywords"),
+  hardSkills: z
+    .array(z.string())
+    .describe("Concrete, nameable technologies/tools/languages/frameworks/platforms/databases/protocols a resume can list as skills"),
+  themes: z
+    .array(z.string())
+    .describe("Conceptual/architectural/activity/methodology phrases that are demonstrated through work, not listed as skills"),
 });
 
-/** Pull normalized skill keywords out of a job description (one OpenAI call). */
+/** Pull normalized JD keywords out of a job description, split into two kinds. */
 export async function extractJdSkills(job: JobForLLM): Promise<JdSkills> {
   const jobText = [
     job.role && `Role: ${job.role}`,
@@ -30,9 +39,11 @@ export async function extractJdSkills(job: JobForLLM): Promise<JdSkills> {
     schemaName: "jd_skills",
     maxTokens: 2000,
     system:
-      "Extract ONLY the concrete, ATS-scannable HARD skills from a job description — specific tools, technologies, languages, frameworks, platforms, methods, and domain keywords a resume parser scans for. Normalize each to its short canonical ATOMIC form (e.g. 'Python', 'Kubernetes', 'PostgreSQL', 'distributed systems', 'A/B testing'); split compounds like 'modern C++' -> 'C++'. " +
-      "EXCLUDE everything that is NOT a scannable skill: education/degrees ('Bachelor's degree', 'CS degree'), years-of-experience ('5+ years'), job titles, company names, and soft/vague phrases (communication, collaboration, mentorship, 'fast-paced', 'detail-oriented', 'decision-making', 'stakeholder management', 'emerging technologies', 'problem-solving'). " +
-      "Split into mustHave (clearly required) and preferred (nice-to-have). No duplicates, no sentences. Keep it tight: at most ~25 skills total.",
+      "Pull the ATS-relevant keywords out of a job description and sort each into exactly ONE of two buckets. " +
+      "hardSkills = concrete, NAMEABLE technologies a resume can legitimately list as a skill: languages, frameworks, libraries, tools, platforms, databases, protocols, cloud services (e.g. 'Python', 'Kubernetes', 'PostgreSQL', 'React', 'AWS', 'Kafka', 'gRPC', 'Terraform'). Normalize to short canonical atomic forms; split compounds like 'modern C++' -> 'C++'. " +
+      "themes = conceptual phrases, architectures, activities, methodologies, and responsibilities that are PROVEN through experience, not listed as a skill (e.g. 'multi-tenant platforms', 'migration', 'modernization', 'infrastructure assessment', 'load balancing', 'distributed systems', 'code reusability', 'scalability'). When unsure whether a term is a nameable tool vs a concept/activity, put it in themes. " +
+      "EXCLUDE entirely (neither bucket): education/degrees, years-of-experience, job titles, company names, and soft/vague phrases (communication, collaboration, mentorship, 'fast-paced', 'detail-oriented', 'stakeholder management', 'emerging technologies', 'problem-solving'). " +
+      "No duplicates across buckets, no sentences. Keep it tight: at most ~18 hardSkills and ~10 themes.",
     prompt: jobText || "No job text provided.",
   });
 }
@@ -144,12 +155,16 @@ function present(skill: string, haystack: string): boolean {
   return false;
 }
 
-/** Weighted coverage of JD skills in a resume. Must-have skills weigh double. */
+/**
+ * Weighted coverage of JD keywords in a resume. Concrete hard skills weigh
+ * double; conceptual themes weigh one and only count when genuinely present in
+ * the resume text (bullets included) — so the score never rewards stuffing.
+ */
 export function scoreCoverage(skills: JdSkills, resumeText: string): FitResult | null {
   const haystack = normalize(resumeText);
   const entries = [
-    ...skills.mustHave.map((s) => ({ s, w: 2 })),
-    ...skills.preferred.map((s) => ({ s, w: 1 })),
+    ...skills.hardSkills.map((s) => ({ s, w: 2 })),
+    ...skills.themes.map((s) => ({ s, w: 1 })),
   ];
   // Dedup by normalized form, keeping the highest weight.
   const byKey = new Map<string, { s: string; w: number }>();

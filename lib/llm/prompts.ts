@@ -99,7 +99,7 @@ function serializeJob(j: JobForLLM): string {
 
 const TAILORING_RULES = `Rules:
 - Tailor STRONGLY to the job description. First identify the JD's MUST-HAVE and PREFERRED skills/keywords (from its requirements and description). Mirror that exact terminology and lead with the most JD-relevant content.
-- Rely on the JD's skills: weave its must-have and preferred skills/keywords into the resume — into the SKILLS section AND into the bullets of the company/project where each skill most plausibly fits — even when they are missing from the source material. Assign each skill to the right company/project context, never randomly.
+- Mirror the JD's keywords, but distinguish two kinds. CONCRETE skills (named tools/tech/languages/frameworks/platforms) may go in the SKILLS section and bullets where the candidate plausibly has them. CONCEPTUAL phrases (architectures, activities, qualities — e.g. multi-tenant, modernization, migration, infrastructure assessment, code reusability, maintainability) must NEVER be listed in the SKILLS section; reflect them only inside a bullet/summary where the candidate's real work genuinely demonstrates them. Do not blindly paste JD wording to inflate keyword match, and never invent experience.
 - Output structure: every work-experience entry contains one or more PROJECT SUBGROUPS (the theme of work at that company: official name + kind). Put each bullet inside the relevant subgroup. Preserve the candidate's given project names/types — do NOT invent or rename projects. If a company has a single unnamed subgroup, keep its name/type empty and just place bullets there.
 - Rewrite bullets to be achievement-oriented and quantified where the source supports it; start with strong action verbs.
 - NEVER fabricate employers, job titles, dates, degrees, or specific numeric metrics that aren't supported. You MAY add JD skills/keywords and rephrase; you may NOT invent facts of record.
@@ -112,7 +112,7 @@ const RESUME_GUIDELINES = `Resume best-practices (apply by default):
 - HEADLINE (the resume "title"): keep it simple — just the role, e.g. "Software Engineer", "AI Software Engineer", or "AI Engineer". Choose the one that best fits the JD. No long pipe-delimited taglines.
 - CONTACT: include the contact details that are provided (email, phone, location). Only include LinkedIn / GitHub / portfolio links that actually exist in the source — never invent URLs, and omit any link that isn't provided.
 - SUMMARY: a focused paragraph, neither one terse line nor a wall of text (about 2-4 sentences). Do NOT open with a generic self-adjective such as "Results-oriented", "Detail-oriented", "Dedicated", "Passionate", "Motivated", "Hardworking", or "Seasoned" — start directly with the concrete role/specialty (e.g. "Machine Learning Engineer with…"). You MUST explicitly mention working in Agile teams and using AI development tools (name them, e.g. Claude / Copilot) — include these every time regardless of the JD — and align the rest tightly with what the JD requires.
-- SKILLS: group into categories; each category lists 5-8 concrete, JD-relevant skills. ALWAYS include Agile/collaboration skills and AI dev tools (e.g. Claude, GitHub Copilot CLI). Pinpoint specific stacks/tools — not vague umbrella terms.
+- SKILLS: group into categories; each category lists 5-8 concrete, JD-relevant skills. Only concrete, NAMEABLE technologies/tools/methods belong here (languages, frameworks, libraries, platforms, databases). NEVER list conceptual phrases, activities, or qualities as a skill (e.g. "multi-tenant platforms", "maintainability", "code reusability", "infrastructure assessment", "modernization", "migration", "scalability") — those are proven in bullets, not listed. ALWAYS include Agile/collaboration skills and AI dev tools (e.g. Claude, GitHub Copilot CLI). Pinpoint specific stacks/tools — not vague umbrella terms.
 - BULLETS — minimum counts are mandatory, not suggestions:
   • The most recent / most JD-relevant roles: each subgroup MUST have AT LEAST 4 bullets (aim 4-7). Do NOT stop at 2-3.
   • Older / less-relevant roles: AT LEAST 2 bullets each (3 preferred). Never zero.
@@ -138,18 +138,28 @@ export function buildExtractionPrompt(rawText: string) {
   };
 }
 
-export type AtsSkills = { mustHave: string[]; preferred: string[] };
+export type AtsSkills = { hardSkills: string[]; themes: string[] };
 
-// The exact ATS keyword list the resume will be graded against, handed to the
-// tailor so it covers what it's scored on (the #1 lever for ATS fit).
+// The JD's ATS keywords, split so the resume covers them WITHOUT keyword-stuffing:
+// concrete tech is listable in Skills; conceptual themes are only legitimate when
+// demonstrated in a real bullet. Handed to the tailor so it covers what it's
+// scored on while still reading like a human wrote it.
 function atsSkillsBlock(skills?: AtsSkills | null): string {
-  if (!skills || (!skills.mustHave?.length && !skills.preferred?.length)) return "";
-  const lines = ["# ATS keywords to cover (this resume is scanned for these EXACT terms)"];
-  if (skills.mustHave?.length) lines.push(`Must-have: ${skills.mustHave.join(", ")}`);
-  if (skills.preferred?.length) lines.push(`Preferred: ${skills.preferred.join(", ")}`);
-  lines.push(
-    "Cover EVERY must-have and preferred keyword the candidate can reasonably support: list them verbatim in the SKILLS section, and weave the most relevant into the bullets of the company/project where each best fits, using these EXACT terms. Prioritize must-haves. Do NOT invent employers, job titles, dates, degrees, or numeric metrics.",
-  );
+  if (!skills || (!skills.hardSkills?.length && !skills.themes?.length)) return "";
+  const lines = ["# ATS keywords (cover these so the resume reads like a real fit, never by stuffing)"];
+  if (skills.hardSkills?.length) {
+    lines.push(`Hard skills (concrete tech): ${skills.hardSkills.join(", ")}`);
+    lines.push(
+      "- For hard skills: list the ones the candidate plausibly has in the SKILLS section, and weave the most relevant into the bullets where they fit, using these exact terms. Do NOT list a tool the candidate has no basis for.",
+    );
+  }
+  if (skills.themes?.length) {
+    lines.push(`Themes (concepts/activities - NOT skills to list): ${skills.themes.join(", ")}`);
+    lines.push(
+      "- For themes: do NOT put these in the SKILLS section. Where the candidate's real experience genuinely involved a theme, reflect it naturally in the summary or the relevant bullet using this wording. If the background does not support a theme, LEAVE IT OUT - never fabricate experience or pad a bullet just to include one.",
+    );
+  }
+  lines.push("Never invent employers, job titles, dates, degrees, or numeric metrics.");
   return lines.join("\n");
 }
 
