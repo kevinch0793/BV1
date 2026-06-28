@@ -3,12 +3,12 @@ import { findJobDescription } from "@/lib/scrape/fetchHtml";
 import { extractJobFields, tailorResume } from "@/lib/llm/service";
 import { profileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { extractJdSkills, scoreFit, profileToText, type JdSkills } from "@/lib/llm/ats";
-import { getCustomInstructions } from "@/lib/settings";
+import { getCustomInstructions, type SkillsConfig } from "@/lib/settings";
 import type { JobForLLM } from "@/lib/llm/prompts";
 
 // clientId is captured at the request-context action entry (startPipeline) and
 // threaded here because the loop runs detached (no cookies).
-export type PipelineOpts = { templateId?: string; model?: string; instructions?: string; clientId?: string };
+export type PipelineOpts = { templateId?: string; model?: string; instructions?: string; clientId?: string; skills?: SkillsConfig };
 
 // Per-profile in-flight state, kept in the Node process so the pipeline keeps
 // running even after the client navigates away. (Single-user local app; for a
@@ -202,6 +202,7 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
       customInstructions,
       model: opts.model,
       atsSkills: skills,
+      skills: opts.skills,
     });
     const beforeText = profile.baseResume?.rawText || profileToText(profileForLLM);
     const fit = scoreFit(skills, jobFields.role ?? "", beforeText, content);

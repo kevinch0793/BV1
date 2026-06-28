@@ -18,6 +18,7 @@ import {
   type AtsSkills,
   type JobForLLM,
   type ProfileForLLM,
+  type SkillsSize,
 } from "@/lib/llm/prompts";
 
 // Coerce a Json column that should hold string[] into a real string[].
@@ -74,6 +75,8 @@ export async function tailorResume(args: {
   model?: string;
   /** The JD's ATS keyword list (so the tailor covers exactly what it's scored on). */
   atsSkills?: AtsSkills | null;
+  /** Target Skills-section size (from Settings). */
+  skills?: SkillsSize;
 }): Promise<ResumeContent> {
   // The client's global custom instructions apply to every tailoring, layered
   // with any per-job instructions.
@@ -88,12 +91,14 @@ export async function tailorResume(args: {
           baseResume: args.baseResume,
           instructions,
           atsSkills: args.atsSkills,
+          skills: args.skills,
         })
       : buildFromScratchPrompt({
           profile: args.profile,
           job: args.job,
           instructions,
           atsSkills: args.atsSkills,
+          skills: args.skills,
         });
 
   // Tailoring runs on Claude (extraction stays on OpenAI). Claude follows the

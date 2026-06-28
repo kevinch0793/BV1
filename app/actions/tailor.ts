@@ -51,7 +51,7 @@ export async function generateTailored(args: {
     };
   }
 
-  const { customInstructions } = await getSettings(clientId);
+  const { customInstructions, skills } = await getSettings(clientId);
   try {
     const content = await tailorResume({
       mode: args.mode,
@@ -61,6 +61,7 @@ export async function generateTailored(args: {
       instructions: args.instructions,
       customInstructions,
       model: args.model,
+      skills,
     });
     return { ok: true, content };
   } catch (e) {
@@ -166,7 +167,7 @@ export async function autoTailorJob(
   };
 
   const profileForLLM = toProfileForLLM(profile);
-  const { customInstructions } = await getSettings(clientId);
+  const { customInstructions, skills } = await getSettings(clientId);
   let content: ResumeContent;
   try {
     content = await tailorResume({
@@ -177,6 +178,7 @@ export async function autoTailorJob(
       instructions: opts?.instructions,
       customInstructions,
       model: opts?.model,
+      skills,
     });
   } catch (e) {
     return { ok: false, error: (e as Error).message };

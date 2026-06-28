@@ -106,14 +106,20 @@ const TAILORING_RULES = `Rules:
 - NEVER fabricate employers, job titles, dates, degrees, or specific numeric metrics that aren't supported. You MAY add JD skills/keywords and rephrase; you may NOT invent facts of record.
 - Keep it truthful, concise, and ATS-friendly. Fill every schema field; use empty strings/arrays where a section genuinely has no content.`;
 
+// Target size of the Skills section (from Settings). Kept local (structurally
+// matches SkillsConfig in lib/settings) so prompts.ts stays free of the db dep.
+export type SkillsSize = { minCategories: number; maxCategories: number; minItems: number; maxItems: number };
+const SKILLS_SIZE_DEFAULT: SkillsSize = { minCategories: 4, maxCategories: 6, minItems: 6, maxItems: 9 };
+
 // Default resume best-practices (2026). Applied to every tailoring on top of the
 // rules above; the user's Settings custom instructions and any per-job
 // instructions layer on after these.
-const RESUME_GUIDELINES = `Resume best-practices (apply by default):
+function resumeGuidelines(skills: SkillsSize): string {
+  return `Resume best-practices (apply by default):
 - HEADLINE (the resume "title"): MIRROR THE JD'S EXACT ROLE TITLE here — this one line is the single highest-value ATS signal. Use the JD's wording (e.g. JD "Staff Backend Engineer, Growth" -> "Staff Backend Engineer"; JD "Customer Success Manager" -> "Customer Success Manager", not "Account Manager"). Strip requisition IDs, locations, and employment-type words; keep it a clean role title, no pipe-delimited taglines. The headline is the target role, so it need not equal a past job title — but keep the candidate's ACTUAL past titles in Work Experience truthful and unchanged. Only mirror a title the candidate can plausibly hold.
 - CONTACT: include the contact details that are provided (email, phone, location). Only include LinkedIn / GitHub / portfolio links that actually exist in the source — never invent URLs, and omit any link that isn't provided.
 - SUMMARY: a focused paragraph, neither one terse line nor a wall of text (about 2-4 sentences). Do NOT open with a generic self-adjective such as "Results-oriented", "Detail-oriented", "Dedicated", "Passionate", "Motivated", "Hardworking", or "Seasoned" — start directly with the concrete role/specialty (e.g. "Machine Learning Engineer with…"). You MUST explicitly mention working in Agile teams and using AI development tools (name them, e.g. Claude / Copilot) — include these every time regardless of the JD — and align the rest tightly with what the JD requires.
-- SKILLS: group into categories; each category lists 5-8 concrete, JD-relevant skills. Only concrete, NAMEABLE technologies/tools/methods belong here (languages, frameworks, libraries, platforms, databases). NEVER list conceptual phrases, activities, or qualities as a skill (e.g. "multi-tenant platforms", "maintainability", "code reusability", "infrastructure assessment", "modernization", "migration", "scalability") — those are proven in bullets, not listed. ALWAYS include Agile/collaboration skills and AI dev tools (e.g. Claude, GitHub Copilot CLI). Pinpoint specific stacks/tools — not vague umbrella terms.
+- SKILLS: produce ${skills.minCategories}-${skills.maxCategories} categories, each with ${skills.minItems}-${skills.maxItems} concrete skills. FILL the section to this size even when the JD lists only a few: draw on the candidate's OWN profile skills plus standard skills for this kind of role that the candidate plausibly has — do NOT restrict to only JD-mentioned skills, and never leave it sparse. Only concrete, NAMEABLE technologies/tools/methods belong here (languages, frameworks, libraries, platforms, databases). NEVER list conceptual phrases, activities, or qualities as a skill (e.g. "multi-tenant platforms", "maintainability", "code reusability", "infrastructure assessment", "modernization", "migration", "scalability") — those are proven in bullets, not listed. Only list skills the candidate genuinely has — never invent. ALWAYS include Agile/collaboration skills and AI dev tools (e.g. Claude, GitHub Copilot CLI). Pinpoint specific stacks/tools — not vague umbrella terms.
 - BULLETS — minimum counts are mandatory, not suggestions:
   • The most recent / most JD-relevant roles: each subgroup MUST have AT LEAST 4 bullets (aim 4-7). Do NOT stop at 2-3.
   • Older / less-relevant roles: AT LEAST 2 bullets each (3 preferred). Never zero.
@@ -125,6 +131,7 @@ const RESUME_GUIDELINES = `Resume best-practices (apply by default):
 - LANGUAGE: never use AI-sounding words or patterns, and never use filler opener adjectives like "Results-oriented", "Detail-oriented", "Dedicated", "Passionate", "Hardworking", "Seasoned", "leveraged cutting-edge solutions", "passionate about innovation", "results-driven professional", or "transformed workflows through synergy". Keep it specific and human while staying ATS-friendly (mirror real JD keywords).
 - PUNCTUATION: use ONLY the plain hyphen "-". NEVER use an en dash "–" or em dash "—" anywhere (not in sentences, ranges, or separators) — they read as machine-written. Rewrite the sentence or use a hyphen, comma, or parentheses instead.
 - Keep it ATS-friendly, 1-2 pages.`;
+}
 
 // 1) Extraction — raw page text/HTML → JobFields
 export function buildExtractionPrompt(rawText: string) {
@@ -171,9 +178,10 @@ export function buildTailorWithBasePrompt(args: {
   job: JobForLLM;
   instructions?: string;
   atsSkills?: AtsSkills | null;
+  skills?: SkillsSize;
 }) {
   return {
-    system: `You are an expert resume writer. You tailor an existing resume to a specific job description, producing a structured resume. ${TAILORING_RULES}\n\n${RESUME_GUIDELINES}`,
+    system: `You are an expert resume writer. You tailor an existing resume to a specific job description, producing a structured resume. ${TAILORING_RULES}\n\n${resumeGuidelines(args.skills ?? SKILLS_SIZE_DEFAULT)}`,
     prompt: [
       `# Job description\n${serializeJob(args.job)}`,
       atsSkillsBlock(args.atsSkills),
@@ -193,9 +201,10 @@ export function buildFromScratchPrompt(args: {
   job: JobForLLM;
   instructions?: string;
   atsSkills?: AtsSkills | null;
+  skills?: SkillsSize;
 }) {
   return {
-    system: `You are an expert resume writer. You build a tailored resume from a candidate's structured profile when no base resume exists. ${TAILORING_RULES}\n- Each company's project subgroups (name + kind) are authoritative anchors — keep them, and expand each subgroup's bullets into JD-aligned, achievement-oriented points without inventing the underlying facts.\n\n${RESUME_GUIDELINES}`,
+    system: `You are an expert resume writer. You build a tailored resume from a candidate's structured profile when no base resume exists. ${TAILORING_RULES}\n- Each company's project subgroups (name + kind) are authoritative anchors — keep them, and expand each subgroup's bullets into JD-aligned, achievement-oriented points without inventing the underlying facts.\n\n${resumeGuidelines(args.skills ?? SKILLS_SIZE_DEFAULT)}`,
     prompt: [
       `# Job description\n${serializeJob(args.job)}`,
       atsSkillsBlock(args.atsSkills),

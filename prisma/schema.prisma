@@ -35,6 +35,12 @@ model Settings {
   sectionOrder       String   @default("summary,experience,skills,education") // resume section render order
   defaultTemplate    String   @default("modern") // default resume template id
   tailoringModel     String   @default("claude-sonnet-4-6") // Claude model used for tailoring
+  // Skills-section size: the resume fills to this range (drawing on the profile's
+  // own skills + role-relevant defaults) even when the JD lists few skills.
+  skillsMinCategories Int     @default(4)
+  skillsMaxCategories Int     @default(6)
+  skillsMinItems      Int     @default(6)
+  skillsMaxItems      Int     @default(9)
   updatedAt          DateTime @updatedAt
 }
 

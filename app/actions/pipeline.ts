@@ -14,8 +14,8 @@ import { startPipeline as start, isPipelineRunning } from "@/lib/pipeline";
  */
 export async function startPipeline(profileId: string): Promise<{ ok: true }> {
   const clientId = await assertOwnsProfile(profileId);
-  const { defaultTemplate, tailoringModel } = await getSettings(clientId);
-  await start(profileId, { templateId: defaultTemplate, model: tailoringModel, clientId });
+  const { defaultTemplate, tailoringModel, skills } = await getSettings(clientId);
+  await start(profileId, { templateId: defaultTemplate, model: tailoringModel, clientId, skills });
   return { ok: true };
 }
 
@@ -48,8 +48,8 @@ export async function ensurePipelineRunning(profileId: string): Promise<{ runnin
   });
   if (work === 0) return { running: false };
 
-  const { defaultTemplate, tailoringModel } = await getSettings(clientId);
-  await start(profileId, { templateId: defaultTemplate, model: tailoringModel, clientId });
+  const { defaultTemplate, tailoringModel, skills } = await getSettings(clientId);
+  await start(profileId, { templateId: defaultTemplate, model: tailoringModel, clientId, skills });
   return { running: true };
 }
 
