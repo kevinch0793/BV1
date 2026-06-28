@@ -204,7 +204,7 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
       atsSkills: skills,
     });
     const beforeText = profile.baseResume?.rawText || profileToText(profileForLLM);
-    const fit = scoreFit(skills, beforeText, content);
+    const fit = scoreFit(skills, jobFields.role ?? "", beforeText, content);
     if (process.env.LLM_DEBUG) console.log(`[pipeline] tailor+ats job ${jobId} ${Date.now() - t0}ms`);
     await prisma.$transaction(async (tx) => {
       await tx.tailoredResume.deleteMany({ where: { jobPostingId: jobId } });

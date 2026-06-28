@@ -77,7 +77,7 @@ export async function computeFit(job: JobForLLM, beforeText: string, content: Re
   } catch {
     return { fitBefore: null, fitAfter: null, fitDetail: null };
   }
-  return scoreFit(skills, beforeText, content);
+  return scoreFit(skills, job.role ?? "", beforeText, content);
 }
 
 /**
@@ -85,16 +85,27 @@ export async function computeFit(job: JobForLLM, beforeText: string, content: Re
  * Lets callers extract JD skills in parallel with tailoring, then score here.
  * Pass `skills = null` (e.g. extraction failed) to get a null fit.
  */
-export function scoreFit(skills: JdSkills | null, beforeText: string, content: ResumeContent): FitSummary {
+export function scoreFit(skills: JdSkills | null, jdTitle: string, beforeText: string, content: ResumeContent): FitSummary {
   if (!skills) return { fitBefore: null, fitAfter: null, fitDetail: null };
-  const before = scoreCoverage(skills, beforeText);
-  const after = scoreCoverage(skills, resumeToText(content));
+  const before = scoreSections(skills, jdTitle, sectionsFromFlat(beforeText));
+  const after = scoreSections(skills, jdTitle, sectionsFromContent(content));
   return {
     fitBefore: before?.score ?? null,
     fitAfter: after?.score ?? null,
-    fitDetail: { jdSkills: skills, matched: after?.matched ?? [], missing: after?.missing ?? [] },
+    fitDetail: {
+      jdSkills: skills,
+      matched: after?.matched ?? [],
+      missing: after?.missing ?? [],
+      breakdown: before && after ? { before: subScores(before), after: subScores(after) } : null,
+    },
   };
 }
+
+const subScores = (b: ScoreBreakdown) => ({
+  titleScore: b.titleScore,
+  hardScore: b.hardScore,
+  themeScore: b.themeScore,
+});
 
 /** Flatten a tailored resume to plain text for keyword matching. */
 export function resumeToText(c: ResumeContent): string {
@@ -109,6 +120,30 @@ export function resumeToText(c: ResumeContent): string {
   }
   for (const ed of c.education) parts.push(`${ed.school} ${ed.degree} ${ed.field} ${ed.details}`);
   return parts.join("\n");
+}
+
+// Section-split view of a resume, so we can score by WHERE a keyword appears
+// (hard skills count anywhere; themes only count as proven inside experience).
+export type ResumeSections = { title: string; skillsText: string; experienceText: string; otherText: string };
+
+function sectionsFromContent(c: ResumeContent): ResumeSections {
+  const skillsText = c.skills.map((s) => `${s.category}: ${s.items.join(", ")}`).join("\n");
+  const exp: string[] = [];
+  for (const e of c.experience) {
+    exp.push(`${e.role} ${e.company} ${e.location}`);
+    for (const p of e.projects ?? []) {
+      exp.push(`${p.name} ${p.type}`);
+      exp.push(...p.bullets);
+    }
+  }
+  const edu = c.education.map((ed) => `${ed.school} ${ed.degree} ${ed.field} ${ed.details}`);
+  return { title: c.title, skillsText, experienceText: exp.join("\n"), otherText: [c.summary, ...edu].join("\n") };
+}
+
+// Flat baseline text (a base resume / profile dump) has no structure — treat the
+// whole thing as experience so skills/themes still match, with no headline.
+function sectionsFromFlat(text: string): ResumeSections {
+  return { title: "", skillsText: "", experienceText: text, otherText: "" };
 }
 
 const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9+#.\s/-]/g, " ").replace(/\s+/g, " ").trim();
@@ -155,40 +190,96 @@ function present(skill: string, haystack: string): boolean {
   return false;
 }
 
+type ScoreBreakdown = { score: number; titleScore: number; hardScore: number; themeScore: number; matched: string[]; missing: string[] };
+
+// Title tokens that carry no matching value — seniority, level, employment type,
+// connective words. The role NOUN (engineer/manager/designer/...) is kept.
+const TITLE_STOP = new Set([
+  "the", "a", "an", "of", "and", "or", "for", "with", "to", "in", "at", "on",
+  "senior", "sr", "junior", "jr", "lead", "staff", "principal", "mid", "entry", "level", "associate",
+  "i", "ii", "iii", "iv", "v", "1", "2", "3", "4", "5",
+  "intern", "contract", "contractor", "temporary", "remote", "hybrid", "onsite", "fulltime", "parttime",
+]);
+// A few title abbreviations expanded before tokenizing (so "SWE" mirrors "Software Engineer").
+const TITLE_ABBREV: [string, string][] = [
+  [" swe ", " software engineer "],
+  [" sde ", " software engineer "],
+  [" sre ", " site reliability engineer "],
+  [" ml engineer ", " machine learning engineer "],
+  [" pm ", " product manager "],
+];
+
+function titleTokens(s: string): string[] {
+  let t = ` ${normalize(s)} `;
+  for (const [ab, full] of TITLE_ABBREV) t = t.split(ab).join(full);
+  return t.split(" ").filter((w) => w.length > 1 && !TITLE_STOP.has(w) && !/\d{3,}/.test(w));
+}
+
+/** 0..1 how well the resume headline mirrors the JD role; null if the JD role has no signal. */
+function titleMatch(jdTitle: string, resumeTitle: string): number | null {
+  const want = titleTokens(jdTitle);
+  if (want.length === 0) return null; // e.g. role was a pure req code / only seniority words
+  const have = normalize(resumeTitle);
+  if (have.includes(want.join(" "))) return 1; // verbatim contiguous mirror — full credit
+  const haveToks = new Set(have.split(" "));
+  return want.filter((w) => haveToks.has(w)).length / want.length;
+}
+
 /**
- * Weighted coverage of JD keywords in a resume. Concrete hard skills weigh
- * double; conceptual themes weigh one and only count when genuinely present in
- * the resume text (bullets included) — so the score never rewards stuffing.
+ * Section-aware ATS match emulating real engines (Taleo/iCIMS/Workday/...):
+ * - Title match is the highest-value signal, applied as a bounded demotion
+ *   factor (a total miss costs 20%, never zeroes a strong resume).
+ * - Hard skills count when present ANYWHERE (binary — no frequency reward).
+ * - Themes are credited 1.0 only when PROVEN in experience, 0.4 if merely
+ *   mentioned elsewhere (signal: prove it in a bullet), else 0.
  */
-export function scoreCoverage(skills: JdSkills, resumeText: string): FitResult | null {
-  const haystack = normalize(resumeText);
-  const entries = [
-    ...skills.hardSkills.map((s) => ({ s, w: 2 })),
-    ...skills.themes.map((s) => ({ s, w: 1 })),
-  ];
-  // Dedup by normalized form, keeping the highest weight.
-  const byKey = new Map<string, { s: string; w: number }>();
-  for (const e of entries) {
-    const k = normalize(e.s);
-    if (!k) continue;
-    const cur = byKey.get(k);
-    if (!cur || e.w > cur.w) byKey.set(k, e);
+function scoreSections(skills: JdSkills, jdTitle: string, sec: ResumeSections): ScoreBreakdown | null {
+  // Dedup within buckets; a term in both buckets is treated as a hard skill only.
+  const hardKeys = new Set<string>();
+  const hard: string[] = [];
+  for (const s of skills.hardSkills) {
+    const k = normalize(s);
+    if (k && !hardKeys.has(k)) { hardKeys.add(k); hard.push(s); }
   }
-  const all = [...byKey.values()];
-  if (all.length === 0) return null;
+  const themeKeys = new Set<string>();
+  const themes: string[] = [];
+  for (const s of skills.themes) {
+    const k = normalize(s);
+    if (k && !hardKeys.has(k) && !themeKeys.has(k)) { themeKeys.add(k); themes.push(s); }
+  }
+  if (hard.length === 0 && themes.length === 0) return null;
+
+  const everywhere = normalize([sec.title, sec.skillsText, sec.experienceText, sec.otherText].join("\n"));
+  const expHay = normalize(sec.experienceText);
+  const softHay = normalize([sec.title, sec.skillsText, sec.otherText].join("\n"));
 
   const matched: string[] = [];
   const missing: string[] = [];
-  let got = 0;
-  let total = 0;
-  for (const { s, w } of all) {
-    total += w;
-    if (present(s, haystack)) {
-      got += w;
-      matched.push(s);
-    } else {
-      missing.push(s);
-    }
+
+  let hardGot = 0;
+  for (const s of hard) {
+    if (present(s, everywhere)) { hardGot++; matched.push(s); } else missing.push(s);
   }
-  return { score: Math.round((got / total) * 100), matched, missing };
+  const hardScore = hard.length ? hardGot / hard.length : null;
+
+  let themeGot = 0;
+  for (const s of themes) {
+    if (present(s, expHay)) { themeGot += 1; matched.push(s); }
+    else if (present(s, softHay)) { themeGot += 0.4; missing.push(s); } // mentioned but not proven
+    else missing.push(s);
+  }
+  const themeScore = themes.length ? themeGot / themes.length : null;
+
+  // Coverage = weighted blend of the present buckets (renormalized if one is empty).
+  const parts: { v: number; w: number }[] = [];
+  if (hardScore != null) parts.push({ v: hardScore, w: 0.65 });
+  if (themeScore != null) parts.push({ v: themeScore, w: 0.35 });
+  const wsum = parts.reduce((a, p) => a + p.w, 0);
+  const coverage = wsum ? parts.reduce((a, p) => a + p.v * p.w, 0) / wsum : 0;
+
+  const tScore = titleMatch(jdTitle, sec.title);
+  const titleFactor = tScore == null ? 1 : 0.8 + 0.2 * tScore;
+
+  const score = Math.max(0, Math.min(100, Math.round(100 * coverage * titleFactor)));
+  return { score, titleScore: tScore ?? 0, hardScore: hardScore ?? 0, themeScore: themeScore ?? 0, matched, missing };
 }

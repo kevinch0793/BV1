@@ -100,6 +100,7 @@ function serializeJob(j: JobForLLM): string {
 const TAILORING_RULES = `Rules:
 - Tailor STRONGLY to the job description. First identify the JD's MUST-HAVE and PREFERRED skills/keywords (from its requirements and description). Mirror that exact terminology and lead with the most JD-relevant content.
 - Mirror the JD's keywords, but distinguish two kinds. CONCRETE skills (named tools/tech/languages/frameworks/platforms) may go in the SKILLS section and bullets where the candidate plausibly has them. CONCEPTUAL phrases (architectures, activities, qualities — e.g. multi-tenant, modernization, migration, infrastructure assessment, code reusability, maintainability) must NEVER be listed in the SKILLS section; reflect them only inside a bullet/summary where the candidate's real work genuinely demonstrates them. Do not blindly paste JD wording to inflate keyword match, and never invent experience.
+- PROOF OVER REPETITION: for each key JD requirement/theme, write ONE bullet that proves it in the JD's exact wording, ideally with a measurable result (a number) — e.g. JD wants "Customer Success" -> "Led migration to a new Customer Success platform, lifting renewal rate 23%". That one line does double duty: it matches the algorithm AND proves it to a human. Use each JD keyword ONCE, in its single strongest place (a hard skill in SKILLS; a theme in its proof-bullet). Do NOT restate the same keyword across the summary, skills, and several bullets — repetition adds zero ATS value and a human instantly reads repeated buzzwords as a red flag. It's about the RIGHT keywords, not many. (Agile and the AI dev tools are the only deliberate always-include items, per the guidelines below.)
 - Output structure: every work-experience entry contains one or more PROJECT SUBGROUPS (the theme of work at that company: official name + kind). Put each bullet inside the relevant subgroup. Preserve the candidate's given project names/types — do NOT invent or rename projects. If a company has a single unnamed subgroup, keep its name/type empty and just place bullets there.
 - Rewrite bullets to be achievement-oriented and quantified where the source supports it; start with strong action verbs.
 - NEVER fabricate employers, job titles, dates, degrees, or specific numeric metrics that aren't supported. You MAY add JD skills/keywords and rephrase; you may NOT invent facts of record.
@@ -109,7 +110,7 @@ const TAILORING_RULES = `Rules:
 // rules above; the user's Settings custom instructions and any per-job
 // instructions layer on after these.
 const RESUME_GUIDELINES = `Resume best-practices (apply by default):
-- HEADLINE (the resume "title"): keep it simple — just the role, e.g. "Software Engineer", "AI Software Engineer", or "AI Engineer". Choose the one that best fits the JD. No long pipe-delimited taglines.
+- HEADLINE (the resume "title"): MIRROR THE JD'S EXACT ROLE TITLE here — this one line is the single highest-value ATS signal. Use the JD's wording (e.g. JD "Staff Backend Engineer, Growth" -> "Staff Backend Engineer"; JD "Customer Success Manager" -> "Customer Success Manager", not "Account Manager"). Strip requisition IDs, locations, and employment-type words; keep it a clean role title, no pipe-delimited taglines. The headline is the target role, so it need not equal a past job title — but keep the candidate's ACTUAL past titles in Work Experience truthful and unchanged. Only mirror a title the candidate can plausibly hold.
 - CONTACT: include the contact details that are provided (email, phone, location). Only include LinkedIn / GitHub / portfolio links that actually exist in the source — never invent URLs, and omit any link that isn't provided.
 - SUMMARY: a focused paragraph, neither one terse line nor a wall of text (about 2-4 sentences). Do NOT open with a generic self-adjective such as "Results-oriented", "Detail-oriented", "Dedicated", "Passionate", "Motivated", "Hardworking", or "Seasoned" — start directly with the concrete role/specialty (e.g. "Machine Learning Engineer with…"). You MUST explicitly mention working in Agile teams and using AI development tools (name them, e.g. Claude / Copilot) — include these every time regardless of the JD — and align the rest tightly with what the JD requires.
 - SKILLS: group into categories; each category lists 5-8 concrete, JD-relevant skills. Only concrete, NAMEABLE technologies/tools/methods belong here (languages, frameworks, libraries, platforms, databases). NEVER list conceptual phrases, activities, or qualities as a skill (e.g. "multi-tenant platforms", "maintainability", "code reusability", "infrastructure assessment", "modernization", "migration", "scalability") — those are proven in bullets, not listed. ALWAYS include Agile/collaboration skills and AI dev tools (e.g. Claude, GitHub Copilot CLI). Pinpoint specific stacks/tools — not vague umbrella terms.
@@ -150,16 +151,16 @@ function atsSkillsBlock(skills?: AtsSkills | null): string {
   if (skills.hardSkills?.length) {
     lines.push(`Hard skills (concrete tech): ${skills.hardSkills.join(", ")}`);
     lines.push(
-      "- For hard skills: list the ones the candidate plausibly has in the SKILLS section, and weave the most relevant into the bullets where they fit, using these exact terms. Do NOT list a tool the candidate has no basis for.",
+      "- For hard skills: list the ones the candidate plausibly has in the SKILLS section (once each). Only mention a skill again in a bullet when that bullet genuinely describes using it - do not echo every skill into prose. Do NOT list a tool the candidate has no basis for.",
     );
   }
   if (skills.themes?.length) {
     lines.push(`Themes (concepts/activities - NOT skills to list): ${skills.themes.join(", ")}`);
     lines.push(
-      "- For themes: do NOT put these in the SKILLS section. Where the candidate's real experience genuinely involved a theme, reflect it naturally in the summary or the relevant bullet using this wording. If the background does not support a theme, LEAVE IT OUT - never fabricate experience or pad a bullet just to include one.",
+      "- For themes: do NOT put these in the SKILLS section. Prove each one the candidate genuinely did with ONE bullet that uses this exact wording and, where possible, a measurable result/number (e.g. 'Customer Success' -> 'Led migration to a new Customer Success platform, lifting renewal rate 23%'). Put it in the experience bullet where it truly happened (not the summary alone, and not repeated). If the background does not support a theme, LEAVE IT OUT - never fabricate experience.",
     );
   }
-  lines.push("Never invent employers, job titles, dates, degrees, or numeric metrics.");
+  lines.push("Mirror the JD's role title in the resume headline. Never invent employers, job titles, dates, degrees, or numeric metrics.");
   return lines.join("\n");
 }
 
