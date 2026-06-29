@@ -2,6 +2,8 @@
 // "YYYY-MM-DD" strings and times are "HH:MM" (24h) — a calendar day/time is a
 // label, not an instant, so no timezone math.
 
+export type MeetingType = "phone" | "video" | null;
+
 export type CalEvent = {
   id: string;
   profileId: string | null;
@@ -13,6 +15,8 @@ export type CalEvent = {
   endTime: string | null;
   location: string | null;
   note: string | null;
+  meetingType: MeetingType; // interview call type
+  meetingLink: string | null; // video link, when meetingType = "video"
   color: string;
 };
 
@@ -25,6 +29,8 @@ export type EventInput = {
   endTime: string | null;
   location: string | null;
   note: string | null;
+  meetingType: MeetingType;
+  meetingLink: string | null;
   color: string;
   profileId: string | null;
 };
@@ -185,6 +191,14 @@ const CURATED_TZS = [
   "Asia/Dubai", "Asia/Karachi", "Asia/Kolkata", "Asia/Dhaka", "Asia/Bangkok", "Asia/Shanghai", "Asia/Singapore", "Asia/Tokyo",
   "Asia/Seoul", "Australia/Sydney", "Pacific/Auckland", "UTC",
 ];
+
+/** The current day + minutes-since-midnight in a given time zone (for the now-line). */
+export function nowInTz(timeZone: string): { day: string; minutes: number } {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date());
+  const m: Record<string, string> = {};
+  for (const p of parts) m[p.type] = p.value;
+  return { day: `${m.year}-${m.month}-${m.day}`, minutes: +m.hour * 60 + +m.minute };
+}
 
 /** All IANA zones when the runtime supports it, else a curated shortlist. */
 export function listTimeZones(): string[] {

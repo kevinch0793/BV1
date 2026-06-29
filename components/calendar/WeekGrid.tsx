@@ -1,6 +1,7 @@
 "use client";
 
-import { weekDays, parseYmd, dowOf, onDay, minutesOf, fmtTime, colorOf, secondaryHourLabels, tzShort, localTimeZone, WEEKDAYS, type CalEvent } from "@/lib/calendar";
+import { useEffect, useRef, useState } from "react";
+import { weekDays, parseYmd, dowOf, onDay, minutesOf, fmtTime, colorOf, secondaryHourLabels, tzShort, localTimeZone, nowInTz, WEEKDAYS, type CalEvent } from "@/lib/calendar";
 
 const HOUR_H = 44; // px per hour row
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -27,13 +28,34 @@ export function WeekGrid({
   const anyAllDay = days.some((day) => events.some((e) => e.allDay && onDay(e, day)));
   const primaryAbbr = primaryTz ? tzShort(primaryTz, cursor) : "";
   const secLabels = secondaryTz ? secondaryHourLabels(primaryTz ?? localTimeZone(), secondaryTz, cursor) : null;
+
+  // Live "current time" line — computed client-side (in the primary zone), updated
+  // each minute, so there is no SSR/hydration mismatch.
+  const [nowMs, setNowMs] = useState<number | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrolled = useRef(false);
+  useEffect(() => {
+    setNowMs(Date.now());
+    const t = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const now = nowMs != null ? nowInTz(primaryTz ?? localTimeZone()) : null;
+  const showNow = !!now && days.includes(now.day);
+  const nowTop = now ? (now.minutes / 60) * HOUR_H : 0;
+  const gutterW = secondaryTz ? "6.5rem" : "3.25rem";
+  useEffect(() => {
+    if (!scrolled.current && now && scrollRef.current) {
+      scrollRef.current.scrollTop = Math.max(0, (now.minutes / 60) * HOUR_H - 120);
+      scrolled.current = true;
+    }
+  }, [nowMs, now]);
   // Header, all-day, and the hour grid all share these columns INSIDE one scroll
   // container, so the scrollbar shrinks them together and they stay aligned.
   const cols = `${secondaryTz ? "3.25rem 3.25rem" : "3.25rem"} repeat(7, minmax(0, 1fr))`;
 
   return (
     <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-      <div className="max-h-[70vh] overflow-y-auto">
+      <div ref={scrollRef} className="max-h-[70vh] overflow-y-auto">
         {/* Sticky header: day names + (optional) all-day row */}
         <div className="sticky top-0 z-20 bg-white">
           <div className="grid border-b border-neutral-200" style={{ gridTemplateColumns: cols }}>
@@ -69,12 +91,17 @@ export function WeekGrid({
         </div>
 
         {/* Hour grid */}
-        <div className="grid" style={{ gridTemplateColumns: cols }}>
+        <div className="relative grid" style={{ gridTemplateColumns: cols }}>
           {secLabels && <HourGutter labels={secLabels} />}
           <HourGutter labels={HOURS.map((h) => (h === 0 ? "" : fmtTime(`${pad(h)}:00`)))} />
           {days.map((day) => (
             <DayColumn key={day} day={day} events={events.filter((e) => !e.allDay && onDay(e, day))} onSlotClick={onSlotClick} onEventClick={onEventClick} />
           ))}
+          {showNow && (
+            <div className="pointer-events-none absolute z-10 border-t-2 border-red-500" style={{ top: nowTop, left: gutterW, right: 0 }}>
+              <span className="absolute -left-[3px] -top-[5px] h-2 w-2 rounded-full bg-red-500" />
+            </div>
+          )}
         </div>
       </div>
     </div>

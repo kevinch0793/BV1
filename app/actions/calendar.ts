@@ -19,6 +19,7 @@ function clean(input: EventInput) {
   const startTime = !allDay && input.startTime && TIME.test(input.startTime) ? input.startTime : null;
   let endTime = !allDay && input.endTime && TIME.test(input.endTime) ? input.endTime : null;
   if (startTime && endTime && endTime < startTime) endTime = null; // ignore a bad range
+  const meetingType = input.meetingType === "phone" || input.meetingType === "video" ? input.meetingType : null;
   return {
     title: title.slice(0, 200),
     date,
@@ -28,6 +29,8 @@ function clean(input: EventInput) {
     endTime,
     location: (input.location ?? "").trim().slice(0, 200) || null,
     note: (input.note ?? "").trim().slice(0, 2000) || null,
+    meetingType,
+    meetingLink: meetingType === "video" ? (input.meetingLink ?? "").trim().slice(0, 500) || null : null,
     color,
     profileId: (input.profileId ?? "").trim() || null,
   };

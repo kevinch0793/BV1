@@ -9,12 +9,13 @@ export type Draft = { mode: "create" | "edit"; event?: CalEvent; init: EventInpu
 
 const inputCls = "rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500";
 
-export function EventModal({ draft, profiles, onClose }: { draft: Draft; profiles: { id: string; name: string }[]; onClose: () => void }) {
+export function EventModal({ draft, profiles, onClose }: { draft: Draft; profiles: { id: string; name: string; phone: string | null }[]; onClose: () => void }) {
   const router = useRouter();
   const [f, setF] = useState<EventInput>(draft.init);
   const [pending, setPending] = useState(false);
   const isEdit = draft.mode === "edit";
   const set = <K extends keyof EventInput>(k: K, v: EventInput[K]) => setF((p) => ({ ...p, [k]: v }));
+  const selectedProfile = profiles.find((p) => p.id === f.profileId) ?? null;
 
   async function save() {
     if (!f.title.trim() || pending) return;
@@ -46,9 +47,61 @@ export function EventModal({ draft, profiles, onClose }: { draft: Draft; profile
             value={f.title}
             onChange={(e) => set("title", e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") save(); }}
-            placeholder="Add title"
+            placeholder="Add interview title"
             className={`${inputCls} w-full text-base font-medium`}
           />
+
+          {/* Interview meeting type + its body (phone -> profile's number, video -> link) */}
+          <div className="flex w-fit gap-1 rounded-lg border border-neutral-200 p-1">
+            {(["phone", "video"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => set("meetingType", t)}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium ${f.meetingType === t ? "bg-sky-700 text-white" : "text-neutral-600 hover:bg-neutral-100"}`}
+              >
+                {t === "phone" ? <PhoneIcon /> : <VideoIcon />}
+                {t === "phone" ? "Phone call" : "Video call"}
+              </button>
+            ))}
+          </div>
+
+          {profiles.length > 0 && (
+            <Field label="Profile / candidate">
+              <select value={f.profileId ?? ""} onChange={(e) => set("profileId", e.target.value || null)} className={inputCls}>
+                <option value="">None</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+
+          {f.meetingType === "phone" && (
+            <div className="rounded-md bg-neutral-50 px-3 py-2 text-sm">
+              {selectedProfile?.phone ? (
+                <span className="flex flex-wrap items-center gap-2 text-neutral-700">
+                  <PhoneIcon />
+                  <a href={`tel:${selectedProfile.phone}`} className="font-medium text-sky-700 hover:underline">{selectedProfile.phone}</a>
+                  <span className="text-xs text-neutral-400">from {selectedProfile.name}</span>
+                </span>
+              ) : (
+                <span className="text-xs text-amber-600">
+                  {selectedProfile ? `${selectedProfile.name} has no phone number — add one on the profile.` : "Pick a profile above to use its phone number."}
+                </span>
+              )}
+            </div>
+          )}
+
+          {f.meetingType === "video" && (
+            <Field label="Video link">
+              <input
+                value={f.meetingLink ?? ""}
+                onChange={(e) => set("meetingLink", e.target.value || null)}
+                placeholder="Paste meeting link (Zoom, Meet, Teams…)"
+                className={`${inputCls} w-full`}
+              />
+            </Field>
+          )}
 
           <label className="flex items-center gap-2 text-sm text-neutral-700">
             <input type="checkbox" checked={f.allDay} onChange={(e) => set("allDay", e.target.checked)} className="h-4 w-4 rounded border-neutral-300 text-sky-600 focus:ring-sky-500" />
@@ -85,16 +138,6 @@ export function EventModal({ draft, profiles, onClose }: { draft: Draft; profile
             </div>
           </div>
 
-          {profiles.length > 0 && (
-            <Field label="Profile (optional)">
-              <select value={f.profileId ?? ""} onChange={(e) => set("profileId", e.target.value || null)} className={inputCls}>
-                <option value="">None</option>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </Field>
-          )}
         </div>
 
         <div className="flex items-center justify-between gap-2 border-t border-neutral-100 px-4 py-3">
@@ -121,5 +164,21 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-xs font-medium text-neutral-500">{label}</span>
       {children}
     </label>
+  );
+}
+
+function PhoneIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.7 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.74-1.27a2 2 0 0 1 2.11-.45c.74.34 1.53.57 2.34.7A2 2 0 0 1 22 16.92Z" />
+    </svg>
+  );
+}
+function VideoIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m23 7-7 5 7 5V7Z" />
+      <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+    </svg>
   );
 }

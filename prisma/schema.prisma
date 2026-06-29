@@ -42,6 +42,8 @@ model CalendarEvent {
   endTime   String? // "HH:MM" (24h)
   location  String?
   note      String?
+  meetingType String? // "phone" | "video" (interview events)
+  meetingLink String? // video meeting URL, when meetingType = "video"
   color     String   @default("sky")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

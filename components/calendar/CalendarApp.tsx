@@ -12,12 +12,14 @@ function addHour(hm: string): string {
   return `${pad((h + 1) % 24)}:${pad(m)}`;
 }
 function blankInput(day: string, time?: string): EventInput {
-  return time
-    ? { title: "", date: day, endDate: null, allDay: false, startTime: time, endTime: addHour(time), location: null, note: null, color: "sky", profileId: null }
-    : { title: "", date: day, endDate: null, allDay: true, startTime: null, endTime: null, location: null, note: null, color: "sky", profileId: null };
+  return {
+    title: "", date: day, endDate: null,
+    allDay: !time, startTime: time ?? null, endTime: time ? addHour(time) : null,
+    location: null, note: null, meetingType: "video", meetingLink: null, color: "sky", profileId: null,
+  };
 }
 
-export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; profiles: { id: string; name: string }[]; today: string }) {
+export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; profiles: { id: string; name: string; phone: string | null }[]; today: string }) {
   const [view, setView] = useState<"month" | "week">("month");
   const [cursor, setCursor] = useState(today);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -53,7 +55,7 @@ export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; p
     setDraft({
       mode: "edit",
       event: ev,
-      init: { title: ev.title, date: ev.date, endDate: ev.endDate, allDay: ev.allDay, startTime: ev.startTime, endTime: ev.endTime, location: ev.location, note: ev.note, color: ev.color, profileId: ev.profileId },
+      init: { title: ev.title, date: ev.date, endDate: ev.endDate, allDay: ev.allDay, startTime: ev.startTime, endTime: ev.endTime, location: ev.location, note: ev.note, meetingType: ev.meetingType, meetingLink: ev.meetingLink, color: ev.color, profileId: ev.profileId },
     });
 
   return (
