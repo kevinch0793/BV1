@@ -1,80 +1,93 @@
 "use client";
 
-import { weekDays, parseYmd, dowOf, onDay, minutesOf, fmtTime, colorOf, WEEKDAYS, type CalEvent } from "@/lib/calendar";
+import { weekDays, parseYmd, dowOf, onDay, minutesOf, fmtTime, colorOf, secondaryHourLabels, tzShort, localTimeZone, WEEKDAYS, type CalEvent } from "@/lib/calendar";
 
 const HOUR_H = 44; // px per hour row
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const GRID_COLS = "3.25rem repeat(7, minmax(0, 1fr))";
 const pad = (n: number) => String(n).padStart(2, "0");
 
 export function WeekGrid({
   cursor,
   today,
   events,
+  secondaryTz,
   onSlotClick,
   onEventClick,
 }: {
   cursor: string;
   today: string;
   events: CalEvent[];
+  secondaryTz: string | null;
   onSlotClick: (day: string, time: string) => void;
   onEventClick: (ev: CalEvent) => void;
 }) {
   const days = weekDays(cursor);
   const anyAllDay = days.some((day) => events.some((e) => e.allDay && onDay(e, day)));
+  const secLabels = secondaryTz ? secondaryHourLabels(secondaryTz, cursor) : null;
+  // Header, all-day, and the hour grid all share these columns INSIDE one scroll
+  // container, so the scrollbar shrinks them together and they stay aligned.
+  const cols = `${secondaryTz ? "3.25rem 3.25rem" : "3.25rem"} repeat(7, minmax(0, 1fr))`;
 
   return (
     <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-      {/* Day headers */}
-      <div className="grid border-b border-neutral-200" style={{ gridTemplateColumns: GRID_COLS }}>
-        <div className="border-r border-neutral-100" />
-        {days.map((day) => {
-          const isToday = day === today;
-          return (
-            <div key={day} className="border-r border-neutral-100 py-1.5 text-center last:border-r-0">
-              <div className="text-[10px] uppercase text-neutral-500">{WEEKDAYS[dowOf(day)]}</div>
-              <div className={`mx-auto mt-0.5 grid h-7 w-7 place-items-center rounded-full text-sm ${isToday ? "bg-sky-600 font-semibold text-white" : "text-neutral-800"}`}>
-                {parseYmd(day).d}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* All-day row */}
-      {anyAllDay && (
-        <div className="grid border-b border-neutral-200 bg-neutral-50/60" style={{ gridTemplateColumns: GRID_COLS }}>
-          <div className="flex items-start justify-end pr-1 pt-1 text-[9px] uppercase text-neutral-400">All-day</div>
-          {days.map((day) => (
-            <div key={day} className="min-h-[26px] space-y-0.5 border-r border-neutral-100 p-0.5 last:border-r-0">
-              {events.filter((e) => e.allDay && onDay(e, day)).map((e) => {
-                const c = colorOf(e.color);
-                return (
-                  <button key={e.id} onClick={() => onEventClick(e)} title={e.title} className={`block w-full truncate rounded px-1 text-left text-[11px] font-medium text-white ${c.bg}`}>
-                    {e.title}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Hour grid */}
-      <div className="max-h-[62vh] overflow-y-auto">
-        <div className="grid" style={{ gridTemplateColumns: GRID_COLS }}>
-          <div className="relative" style={{ height: 24 * HOUR_H }}>
-            {HOURS.map((h) => (
-              <div key={h} className="absolute right-1 -translate-y-1/2 text-[10px] text-neutral-400" style={{ top: h * HOUR_H }}>
-                {h === 0 ? "" : fmtTime(`${pad(h)}:00`)}
-              </div>
-            ))}
+      <div className="max-h-[70vh] overflow-y-auto">
+        {/* Sticky header: day names + (optional) all-day row */}
+        <div className="sticky top-0 z-20 bg-white">
+          <div className="grid border-b border-neutral-200" style={{ gridTemplateColumns: cols }}>
+            {secondaryTz && <GutterHead>{tzShort(secondaryTz, cursor)}</GutterHead>}
+            <GutterHead>{secondaryTz ? tzShort(localTimeZone(), cursor) : ""}</GutterHead>
+            {days.map((day) => {
+              const isToday = day === today;
+              return (
+                <div key={day} className="border-r border-neutral-100 py-1.5 text-center last:border-r-0">
+                  <div className="text-[10px] uppercase text-neutral-500">{WEEKDAYS[dowOf(day)]}</div>
+                  <div className={`mx-auto mt-0.5 grid h-7 w-7 place-items-center rounded-full text-sm ${isToday ? "bg-sky-600 font-semibold text-white" : "text-neutral-800"}`}>{parseYmd(day).d}</div>
+                </div>
+              );
+            })}
           </div>
+
+          {anyAllDay && (
+            <div className="grid border-b border-neutral-200 bg-neutral-50/60" style={{ gridTemplateColumns: cols }}>
+              {secondaryTz && <div className="border-r border-neutral-100" />}
+              <div className="flex items-start justify-end border-r border-neutral-100 px-1 pt-1 text-[9px] uppercase text-neutral-400">All-day</div>
+              {days.map((day) => (
+                <div key={day} className="min-h-[26px] space-y-0.5 border-r border-neutral-100 p-0.5 last:border-r-0">
+                  {events.filter((e) => e.allDay && onDay(e, day)).map((e) => {
+                    const c = colorOf(e.color);
+                    return (
+                      <button key={e.id} onClick={() => onEventClick(e)} title={e.title} className={`block w-full truncate rounded px-1 text-left text-[11px] font-medium text-white ${c.bg}`}>{e.title}</button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Hour grid */}
+        <div className="grid" style={{ gridTemplateColumns: cols }}>
+          {secLabels && <HourGutter labels={secLabels} />}
+          <HourGutter labels={HOURS.map((h) => (h === 0 ? "" : fmtTime(`${pad(h)}:00`)))} />
           {days.map((day) => (
             <DayColumn key={day} day={day} events={events.filter((e) => !e.allDay && onDay(e, day))} onSlotClick={onSlotClick} onEventClick={onEventClick} />
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function GutterHead({ children }: { children: React.ReactNode }) {
+  return <div className="flex items-end justify-end border-r border-neutral-100 px-1 pb-1 text-[9px] font-medium text-neutral-400">{children}</div>;
+}
+
+function HourGutter({ labels }: { labels: string[] }) {
+  return (
+    <div className="relative border-r border-neutral-100" style={{ height: 24 * HOUR_H }}>
+      {labels.map((l, h) => (
+        <div key={h} className="absolute right-1 -translate-y-1/2 whitespace-nowrap text-[10px] text-neutral-400" style={{ top: h * HOUR_H }}>{l}</div>
+      ))}
     </div>
   );
 }

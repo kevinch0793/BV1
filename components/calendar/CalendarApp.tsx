@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { addDays, addMonths, monthTitle, weekTitle, type CalEvent, type EventInput } from "@/lib/calendar";
+import { useEffect, useMemo, useState } from "react";
+import { addDays, addMonths, monthTitle, weekTitle, listTimeZones, type CalEvent, type EventInput } from "@/lib/calendar";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
 import { WeekGrid } from "@/components/calendar/WeekGrid";
 import { EventModal, type Draft } from "@/components/calendar/EventModal";
@@ -21,6 +21,23 @@ export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; p
   const [view, setView] = useState<"month" | "week">("month");
   const [cursor, setCursor] = useState(today);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [secondaryTz, setSecondaryTz] = useState<string | null>(null);
+  const zones = useMemo(() => listTimeZones(), []);
+
+  // Restore the saved 2nd time zone after mount (client-only, no SSR mismatch).
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("planner.secondaryTz");
+      if (v) setSecondaryTz(v);
+    } catch { /* ignore */ }
+  }, []);
+  const changeTz = (v: string | null) => {
+    setSecondaryTz(v);
+    try {
+      if (v) localStorage.setItem("planner.secondaryTz", v);
+      else localStorage.removeItem("planner.secondaryTz");
+    } catch { /* ignore */ }
+  };
 
   const title = view === "month" ? monthTitle(cursor) : weekTitle(cursor);
   const step = (dir: number) => setCursor(view === "month" ? addMonths(cursor, dir) : addDays(cursor, dir * 7));
@@ -54,17 +71,32 @@ export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; p
           <div className="text-lg font-semibold text-neutral-900">{title}</div>
         </div>
 
-        <div className="flex gap-1 rounded-lg border border-neutral-200 p-1">
-          {(["month", "week"] as const).map((v) => (
-            <button key={v} onClick={() => setView(v)} className={`rounded-md px-3 py-1 text-xs font-medium capitalize ${view === v ? "bg-sky-700 text-white" : "text-neutral-600 hover:bg-neutral-100"}`}>{v}</button>
-          ))}
+        <div className="flex items-center gap-2">
+          {view === "week" && (
+            <select
+              value={secondaryTz ?? ""}
+              onChange={(e) => changeTz(e.target.value || null)}
+              title="Show a second time zone alongside your local time"
+              className="max-w-[12rem] rounded-md border border-neutral-300 px-2 py-1.5 text-xs text-neutral-700 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            >
+              <option value="">+ 2nd time zone</option>
+              {zones.map((tz) => (
+                <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+              ))}
+            </select>
+          )}
+          <div className="flex gap-1 rounded-lg border border-neutral-200 p-1">
+            {(["month", "week"] as const).map((v) => (
+              <button key={v} onClick={() => setView(v)} className={`rounded-md px-3 py-1 text-xs font-medium capitalize ${view === v ? "bg-sky-700 text-white" : "text-neutral-600 hover:bg-neutral-100"}`}>{v}</button>
+            ))}
+          </div>
         </div>
       </div>
 
       {view === "month" ? (
         <MonthGrid cursor={cursor} today={today} events={events} onDayClick={(d) => openCreate(d)} onEventClick={openEdit} onMore={(d) => { setCursor(d); setView("week"); }} />
       ) : (
-        <WeekGrid cursor={cursor} today={today} events={events} onSlotClick={(d, t) => openCreate(d, t)} onEventClick={openEdit} />
+        <WeekGrid cursor={cursor} today={today} events={events} secondaryTz={secondaryTz} onSlotClick={(d, t) => openCreate(d, t)} onEventClick={openEdit} />
       )}
 
       <p className="text-xs text-neutral-400">Click a day{view === "week" ? " or time slot" : ""} to add an event; click an event to edit or delete it.</p>

@@ -134,3 +134,65 @@ export function cmpEvent(a: CalEvent, b: CalEvent): number {
   if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
   return minutesOf(a.startTime) - minutesOf(b.startTime) || a.title.localeCompare(b.title);
 }
+
+// ---- second-timezone support (Google-Calendar-style) ----
+
+export const localTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** A time zone's offset from UTC (minutes) at a given instant — DST-aware. */
+export function tzOffsetMinutes(timeZone: string, date: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(date);
+  const m: Record<string, string> = {};
+  for (const p of parts) m[p.type] = p.value;
+  const asUTC = Date.UTC(+m.year, +m.month - 1, +m.day, +m.hour, +m.minute, +m.second);
+  return Math.round((asUTC - date.getTime()) / 60000);
+}
+
+/** 24 hour labels for `secondaryTz`, aligned to the primary (local) hour rows of `refDay`. */
+export function secondaryHourLabels(secondaryTz: string, refDay: string): string[] {
+  const { y, m, d } = parseYmd(refDay);
+  const ref = new Date(y, m - 1, d, 0, 0);
+  let delta = 0;
+  try {
+    delta = tzOffsetMinutes(secondaryTz, ref) - tzOffsetMinutes(localTimeZone(), ref);
+  } catch {
+    return Array.from({ length: 24 }, () => "");
+  }
+  return Array.from({ length: 24 }, (_, h) => {
+    const min = (((h * 60 + delta) % 1440) + 1440) % 1440;
+    return fmtTime(`${pad(Math.floor(min / 60))}:${pad(min % 60)}`);
+  });
+}
+
+/** A short label for a zone, e.g. "PDT" or "GMT+1". */
+export function tzShort(timeZone: string, refDay: string): string {
+  const { y, m, d } = parseYmd(refDay);
+  const ref = new Date(y, m - 1, d, 12, 0);
+  try {
+    const tz = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "short" }).formatToParts(ref).find((p) => p.type === "timeZoneName")?.value;
+    if (tz) return tz;
+    const off = tzOffsetMinutes(timeZone, ref);
+    const a = Math.abs(off);
+    return `GMT${off >= 0 ? "+" : "-"}${Math.floor(a / 60)}${a % 60 ? ":" + pad(a % 60) : ""}`;
+  } catch {
+    return "";
+  }
+}
+
+const CURATED_TZS = [
+  "Pacific/Honolulu", "America/Anchorage", "America/Los_Angeles", "America/Denver", "America/Chicago", "America/New_York",
+  "America/Sao_Paulo", "Atlantic/Reykjavik", "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Athens", "Europe/Moscow",
+  "Asia/Dubai", "Asia/Karachi", "Asia/Kolkata", "Asia/Dhaka", "Asia/Bangkok", "Asia/Shanghai", "Asia/Singapore", "Asia/Tokyo",
+  "Asia/Seoul", "Australia/Sydney", "Pacific/Auckland", "UTC",
+];
+
+/** All IANA zones when the runtime supports it, else a curated shortlist. */
+export function listTimeZones(): string[] {
+  try {
+    const all = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone");
+    if (all && all.length) return all;
+  } catch {
+    /* fall through */
+  }
+  return CURATED_TZS;
+}
