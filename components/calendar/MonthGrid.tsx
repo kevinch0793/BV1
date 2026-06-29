@@ -2,6 +2,7 @@
 
 import { monthMatrix, parseYmd, onDay, cmpEvent, colorOf, fmtTime, WEEKDAYS, type CalEvent } from "@/lib/calendar";
 import { StageTag } from "@/components/calendar/StageTag";
+import { MeetingIcon } from "@/components/calendar/MeetingIcon";
 
 export function MonthGrid({
   cursor,
@@ -74,6 +75,7 @@ function MonthChip({ ev, onClick }: { ev: CalEvent; onClick: () => void }) {
     return (
       <button onClick={stop} title={ev.title} className={`flex w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-white ${c.bg}`}>
         <StageTag step={ev.step} />
+        <MeetingIcon type={ev.meetingType} />
         <span className="truncate">{ev.title}</span>
       </button>
     );
@@ -83,6 +85,7 @@ function MonthChip({ ev, onClick }: { ev: CalEvent; onClick: () => void }) {
       <span className={`h-2 w-2 shrink-0 rounded-full ${c.bg}`} />
       {ev.startTime && <span className="shrink-0 text-neutral-500">{fmtTime(ev.startTime)}</span>}
       <StageTag step={ev.step} />
+      <MeetingIcon type={ev.meetingType} />
       <span className="truncate">{ev.title}</span>
     </button>
   );

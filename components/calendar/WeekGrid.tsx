@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { weekDays, parseYmd, dowOf, onDay, minutesOf, fmtTime, colorOf, secondaryHourLabels, tzShort, localTimeZone, nowInTz, WEEKDAYS, type CalEvent } from "@/lib/calendar";
 import { StageTag } from "@/components/calendar/StageTag";
+import { MeetingIcon } from "@/components/calendar/MeetingIcon";
 
 const HOUR_H = 44; // px per hour row
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -82,6 +83,7 @@ export function WeekGrid({
                     return (
                       <button key={e.id} onClick={() => onEventClick(e)} title={e.title} className={`flex w-full items-center gap-1 truncate rounded px-1 text-left text-[11px] font-medium text-white ${c.bg}`}>
                         <StageTag step={e.step} />
+                        <MeetingIcon type={e.meetingType} />
                         <span className="truncate">{e.title}</span>
                       </button>
                     );
@@ -157,7 +159,7 @@ function DayColumn({ day, events, nowMinutes, onSlotClick, onEventClick }: { day
             className={`absolute overflow-hidden rounded px-1 py-0.5 text-left text-[11px] leading-tight text-white ${c.bg}`}
             style={{ top, height, left: `calc(${(lane / count) * 100}% + 1px)`, width: `calc(${(1 / count) * 100}% - 2px)` }}
           >
-            <div className="flex items-center gap-1 truncate"><StageTag step={ev.step} /><span className="truncate font-medium">{ev.title}</span></div>
+            <div className="flex items-center gap-1 truncate"><StageTag step={ev.step} /><MeetingIcon type={ev.meetingType} /><span className="truncate font-medium">{ev.title}</span></div>
             {height > 28 && <div className="truncate opacity-90">{fmtTime(ev.startTime)}</div>}
           </button>
         );
