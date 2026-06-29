@@ -13,7 +13,6 @@ export type CalEvent = {
   allDay: boolean;
   startTime: string | null; // "HH:MM"
   endTime: string | null;
-  location: string | null;
   note: string | null;
   meetingType: MeetingType; // interview call type
   meetingLink: string | null; // video link, when meetingType = "video"
@@ -27,7 +26,6 @@ export type EventInput = {
   allDay: boolean;
   startTime: string | null;
   endTime: string | null;
-  location: string | null;
   note: string | null;
   meetingType: MeetingType;
   meetingLink: string | null;

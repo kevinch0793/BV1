@@ -103,25 +103,12 @@ export function EventModal({ draft, profiles, onClose }: { draft: Draft; profile
             </Field>
           )}
 
-          <label className="flex items-center gap-2 text-sm text-neutral-700">
-            <input type="checkbox" checked={f.allDay} onChange={(e) => set("allDay", e.target.checked)} className="h-4 w-4 rounded border-neutral-300 text-sky-600 focus:ring-sky-500" />
-            All-day
-          </label>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <Field label="Date"><input type="date" value={f.date} onChange={(e) => set("date", e.target.value)} className={inputCls} /></Field>
+            <Field label="Start"><input type="time" value={f.startTime ?? ""} onChange={(e) => set("startTime", e.target.value || null)} className={inputCls} /></Field>
+            <Field label="End"><input type="time" value={f.endTime ?? ""} onChange={(e) => set("endTime", e.target.value || null)} className={inputCls} /></Field>
+          </div>
 
-          {f.allDay ? (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <Field label="Date"><input type="date" value={f.date} onChange={(e) => set("date", e.target.value)} className={inputCls} /></Field>
-              <Field label="End (optional)"><input type="date" value={f.endDate ?? ""} min={f.date} onChange={(e) => set("endDate", e.target.value || null)} className={inputCls} /></Field>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <Field label="Date"><input type="date" value={f.date} onChange={(e) => set("date", e.target.value)} className={inputCls} /></Field>
-              <Field label="Start"><input type="time" value={f.startTime ?? ""} onChange={(e) => set("startTime", e.target.value || null)} className={inputCls} /></Field>
-              <Field label="End"><input type="time" value={f.endTime ?? ""} onChange={(e) => set("endTime", e.target.value || null)} className={inputCls} /></Field>
-            </div>
-          )}
-
-          <input value={f.location ?? ""} onChange={(e) => set("location", e.target.value || null)} placeholder="Add location" className={`${inputCls} w-full`} />
           <textarea value={f.note ?? ""} onChange={(e) => set("note", e.target.value || null)} placeholder="Add notes" rows={3} className={`${inputCls} w-full`} />
 
           <div>

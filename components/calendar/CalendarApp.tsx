@@ -12,10 +12,11 @@ function addHour(hm: string): string {
   return `${pad((h + 1) % 24)}:${pad(m)}`;
 }
 function blankInput(day: string, time?: string): EventInput {
+  const start = time ?? "09:00";
   return {
     title: "", date: day, endDate: null,
-    allDay: !time, startTime: time ?? null, endTime: time ? addHour(time) : null,
-    location: null, note: null, meetingType: "video", meetingLink: null, color: "sky", profileId: null,
+    allDay: false, startTime: start, endTime: addHour(start),
+    note: null, meetingType: "video", meetingLink: null, color: "sky", profileId: null,
   };
 }
 
@@ -55,7 +56,7 @@ export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; p
     setDraft({
       mode: "edit",
       event: ev,
-      init: { title: ev.title, date: ev.date, endDate: ev.endDate, allDay: ev.allDay, startTime: ev.startTime, endTime: ev.endTime, location: ev.location, note: ev.note, meetingType: ev.meetingType, meetingLink: ev.meetingLink, color: ev.color, profileId: ev.profileId },
+      init: { title: ev.title, date: ev.date, endDate: null, allDay: false, startTime: ev.startTime ?? "09:00", endTime: ev.endTime ?? addHour(ev.startTime ?? "09:00"), note: ev.note, meetingType: ev.meetingType, meetingLink: ev.meetingLink, color: ev.color, profileId: ev.profileId },
     });
 
   return (

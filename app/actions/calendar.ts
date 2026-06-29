@@ -27,7 +27,6 @@ function clean(input: EventInput) {
     allDay,
     startTime,
     endTime,
-    location: (input.location ?? "").trim().slice(0, 200) || null,
     note: (input.note ?? "").trim().slice(0, 2000) || null,
     meetingType,
     meetingLink: meetingType === "video" ? (input.meetingLink ?? "").trim().slice(0, 500) || null : null,

@@ -41,8 +41,6 @@ export function WeekGrid({
   }, []);
   const now = nowMs != null ? nowInTz(primaryTz ?? localTimeZone()) : null;
   const showNow = !!now && days.includes(now.day);
-  const nowTop = now ? (now.minutes / 60) * HOUR_H : 0;
-  const gutterW = secondaryTz ? "6.5rem" : "3.25rem";
   useEffect(() => {
     if (!scrolled.current && now && scrollRef.current) {
       scrollRef.current.scrollTop = Math.max(0, (now.minutes / 60) * HOUR_H - 120);
@@ -91,17 +89,19 @@ export function WeekGrid({
         </div>
 
         {/* Hour grid */}
-        <div className="relative grid" style={{ gridTemplateColumns: cols }}>
+        <div className="grid" style={{ gridTemplateColumns: cols }}>
           {secLabels && <HourGutter labels={secLabels} />}
           <HourGutter labels={HOURS.map((h) => (h === 0 ? "" : fmtTime(`${pad(h)}:00`)))} />
           {days.map((day) => (
-            <DayColumn key={day} day={day} events={events.filter((e) => !e.allDay && onDay(e, day))} onSlotClick={onSlotClick} onEventClick={onEventClick} />
+            <DayColumn
+              key={day}
+              day={day}
+              events={events.filter((e) => !e.allDay && onDay(e, day))}
+              nowMinutes={showNow && now!.day === day ? now!.minutes : null}
+              onSlotClick={onSlotClick}
+              onEventClick={onEventClick}
+            />
           ))}
-          {showNow && (
-            <div className="pointer-events-none absolute z-10 border-t-2 border-red-500" style={{ top: nowTop, left: gutterW, right: 0 }}>
-              <span className="absolute -left-[3px] -top-[5px] h-2 w-2 rounded-full bg-red-500" />
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -122,7 +122,7 @@ function HourGutter({ labels }: { labels: string[] }) {
   );
 }
 
-function DayColumn({ day, events, onSlotClick, onEventClick }: { day: string; events: CalEvent[]; onSlotClick: (day: string, time: string) => void; onEventClick: (ev: CalEvent) => void }) {
+function DayColumn({ day, events, nowMinutes, onSlotClick, onEventClick }: { day: string; events: CalEvent[]; nowMinutes?: number | null; onSlotClick: (day: string, time: string) => void; onEventClick: (ev: CalEvent) => void }) {
   const placed = layoutLanes(events);
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -134,6 +134,11 @@ function DayColumn({ day, events, onSlotClick, onEventClick }: { day: string; ev
       {HOURS.map((h) => (
         <div key={h} className="pointer-events-none absolute inset-x-0 border-t border-neutral-100" style={{ top: h * HOUR_H }} />
       ))}
+      {nowMinutes != null && (
+        <div className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-red-500" style={{ top: (nowMinutes / 60) * HOUR_H }}>
+          <span className="absolute -left-[3px] -top-[5px] h-2 w-2 rounded-full bg-red-500" />
+        </div>
+      )}
       {placed.map(({ ev, lane, count }) => {
         const start = minutesOf(ev.startTime);
         const end = ev.endTime ? minutesOf(ev.endTime) : start + 60;

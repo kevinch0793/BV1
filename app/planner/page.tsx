@@ -14,7 +14,7 @@ export default async function PlannerPage() {
 
   const evs: CalEvent[] = events.map((e) => ({
     id: e.id, profileId: e.profileId, title: e.title, date: e.date, endDate: e.endDate,
-    allDay: e.allDay, startTime: e.startTime, endTime: e.endTime, location: e.location, note: e.note,
+    allDay: e.allDay, startTime: e.startTime, endTime: e.endTime, note: e.note,
     meetingType: e.meetingType === "phone" || e.meetingType === "video" ? e.meetingType : null,
     meetingLink: e.meetingLink, color: e.color,
   }));
