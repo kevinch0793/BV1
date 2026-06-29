@@ -23,6 +23,30 @@ model Client {
 
   profiles Profile[]
   settings Settings?
+  events   CalendarEvent[]
+}
+
+/// A manually-managed calendar event (Google/Outlook-style). Dates/times are
+/// stored as wall-clock strings (no timezone) since a calendar day is a label,
+/// not an instant.
+model CalendarEvent {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  profileId String? // optional tag to a profile (not an FK; resolved in the UI)
+  title     String
+  date      String // start day, "YYYY-MM-DD"
+  endDate   String? // end day for multi-day events, "YYYY-MM-DD" (defaults to date)
+  allDay    Boolean  @default(true)
+  startTime String? // "HH:MM" (24h), when not all-day
+  endTime   String? // "HH:MM" (24h)
+  location  String?
+  note      String?
+  color     String   @default("sky")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId, date])
 }
 
 /// Per-client app settings (one row per Client).
