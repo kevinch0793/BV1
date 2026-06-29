@@ -4,6 +4,7 @@ import { extractJobFields, tailorResume } from "@/lib/llm/service";
 import { profileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { extractJdSkills, scoreFit, profileToText, type JdSkills } from "@/lib/llm/ats";
 import { getCustomInstructions, type SkillsConfig } from "@/lib/settings";
+import { pruneOldActivity } from "@/lib/retention";
 import type { JobForLLM } from "@/lib/llm/prompts";
 
 // clientId is captured at the request-context action entry (startPipeline) and
@@ -32,6 +33,10 @@ export async function startPipeline(profileId: string, opts: PipelineOpts): Prom
     running.set(profileId, opts);
     return;
   }
+
+  // Retention: prune activity older than the 30-day window. Fire-and-forget so a
+  // fresh pipeline run keeps the database bounded without blocking processing.
+  void pruneOldActivity().catch(() => {});
 
   // Fresh start: recover any states left mid-flight by a previous interrupted run.
   await prisma.jobPosting.updateMany({ where: { profileId, status: "fetching" }, data: { status: "pending" } });
