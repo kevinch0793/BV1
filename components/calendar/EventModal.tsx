@@ -19,7 +19,7 @@ export function EventModal({ draft, profiles, onClose }: { draft: Draft; profile
   const selectedProfile = profiles.find((p) => p.id === f.profileId) ?? null;
 
   async function save() {
-    if (!f.title.trim() || pending) return;
+    if (!f.company.trim() || pending) return;
     setPending(true);
     const res = isEdit ? await updateEvent(draft.event!.id, f) : await createEvent(f);
     if (res.ok) { router.refresh(); onClose(); } else setPending(false);
@@ -45,11 +45,18 @@ export function EventModal({ draft, profiles, onClose }: { draft: Draft; profile
         <div className="space-y-3 p-4">
           <input
             autoFocus
-            value={f.title}
-            onChange={(e) => set("title", e.target.value)}
+            value={f.company}
+            onChange={(e) => set("company", e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") save(); }}
-            placeholder="Add interview title"
+            placeholder="Company"
             className={`${inputCls} w-full text-base font-medium`}
+          />
+          <input
+            value={f.role ?? ""}
+            onChange={(e) => set("role", e.target.value || null)}
+            onKeyDown={(e) => { if (e.key === "Enter") save(); }}
+            placeholder="Role you're applying to"
+            className={`${inputCls} w-full`}
           />
 
           <Field label="Stage">
@@ -145,7 +152,7 @@ export function EventModal({ draft, profiles, onClose }: { draft: Draft; profile
           )}
           <div className="flex gap-2">
             <button onClick={onClose} className="rounded-md px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100">Cancel</button>
-            <button onClick={save} disabled={pending || !f.title.trim()} className="rounded-md bg-sky-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-800 disabled:opacity-40">
+            <button onClick={save} disabled={pending || !f.company.trim()} className="rounded-md bg-sky-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-sky-800 disabled:opacity-40">
               {pending ? "Saving…" : "Save"}
             </button>
           </div>

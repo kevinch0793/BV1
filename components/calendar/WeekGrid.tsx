@@ -81,10 +81,10 @@ export function WeekGrid({
                   {events.filter((e) => e.allDay && onDay(e, day)).map((e) => {
                     const c = colorOf(e.color);
                     return (
-                      <button key={e.id} onClick={() => onEventClick(e)} title={e.title} className={`flex w-full items-center gap-1 truncate rounded px-1 text-left text-[11px] font-medium text-white ${c.bg}`}>
+                      <button key={e.id} onClick={() => onEventClick(e)} title={e.company} className={`flex w-full items-center gap-1 truncate rounded px-1 text-left text-[11px] font-medium text-white ${c.bg}`}>
                         <StageTag step={e.step} />
                         <MeetingIcon type={e.meetingType} />
-                        <span className="truncate">{e.title}</span>
+                        <span className="truncate">{e.company}</span>
                       </button>
                     );
                   })}
@@ -155,11 +155,11 @@ function DayColumn({ day, events, nowMinutes, onSlotClick, onEventClick }: { day
           <button
             key={ev.id}
             onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
-            title={`${fmtTime(ev.startTime)} ${ev.title}`}
+            title={`${fmtTime(ev.startTime)} ${ev.company}`}
             className={`absolute overflow-hidden rounded px-1 py-0.5 text-left text-[11px] leading-tight text-white ${c.bg}`}
             style={{ top, height, left: `calc(${(lane / count) * 100}% + 1px)`, width: `calc(${(1 / count) * 100}% - 2px)` }}
           >
-            <div className="flex items-center gap-1 truncate"><StageTag step={ev.step} /><MeetingIcon type={ev.meetingType} /><span className="truncate font-medium">{ev.title}</span></div>
+            <div className="flex items-center gap-1 truncate"><StageTag step={ev.step} /><MeetingIcon type={ev.meetingType} /><span className="truncate font-medium">{ev.company}</span></div>
             {height > 28 && <div className="truncate opacity-90">{fmtTime(ev.startTime)}</div>}
           </button>
         );

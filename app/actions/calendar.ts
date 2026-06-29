@@ -10,9 +10,9 @@ const TIME = /^\d{2}:\d{2}$/;
 
 // Sanitize untrusted client input into a storable event (or null if invalid).
 function clean(input: EventInput) {
-  const title = (input.title ?? "").trim();
+  const company = (input.company ?? "").trim().slice(0, 200);
   const date = input.date ?? "";
-  if (!title || !DAY.test(date)) return null;
+  if (!company || !DAY.test(date)) return null;
   const allDay = !!input.allDay;
   const color = EVENT_COLORS.some((c) => c.id === input.color) ? input.color : "sky";
   const endDate = input.endDate && DAY.test(input.endDate) && input.endDate >= date ? input.endDate : null;
@@ -21,7 +21,9 @@ function clean(input: EventInput) {
   if (startTime && endTime && endTime < startTime) endTime = null; // ignore a bad range
   const meetingType = input.meetingType === "phone" || input.meetingType === "video" ? input.meetingType : null;
   return {
-    title: title.slice(0, 200),
+    company,
+    role: (input.role ?? "").trim().slice(0, 200) || null,
+    title: company, // keep the legacy NOT NULL column in sync with company
     date,
     endDate,
     allDay,

@@ -7,7 +7,8 @@ export type MeetingType = "phone" | "video" | null;
 export type CalEvent = {
   id: string;
   profileId: string | null;
-  title: string;
+  company: string; // company we're interviewing with (shown on the calendar bar)
+  role: string | null; // role we're applying to
   date: string; // start day "YYYY-MM-DD"
   endDate: string | null; // end day for multi-day all-day events
   allDay: boolean;
@@ -21,7 +22,8 @@ export type CalEvent = {
 };
 
 export type EventInput = {
-  title: string;
+  company: string;
+  role: string | null;
   date: string;
   endDate: string | null;
   allDay: boolean;
@@ -149,7 +151,7 @@ export function onDay(e: CalEvent, day: string): boolean {
 /** Sort for a day: all-day first, then by start time, then title. */
 export function cmpEvent(a: CalEvent, b: CalEvent): number {
   if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
-  return minutesOf(a.startTime) - minutesOf(b.startTime) || a.title.localeCompare(b.title);
+  return minutesOf(a.startTime) - minutesOf(b.startTime) || a.company.localeCompare(b.company);
 }
 
 // ---- second-timezone support (Google-Calendar-style) ----

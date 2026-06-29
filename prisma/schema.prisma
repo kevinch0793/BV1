@@ -34,7 +34,9 @@ model CalendarEvent {
   clientId  String
   client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   profileId String? // optional tag to a profile (not an FK; resolved in the UI)
-  title     String
+  title     String // legacy; kept in sync with `company` (NOT NULL)
+  company   String? // company we're interviewing with (shown on the calendar bar)
+  role      String? // role we're applying to
   date      String // start day, "YYYY-MM-DD"
   endDate   String? // end day for multi-day events, "YYYY-MM-DD" (defaults to date)
   allDay    Boolean  @default(true)
