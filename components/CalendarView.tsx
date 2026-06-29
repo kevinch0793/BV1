@@ -62,7 +62,7 @@ export function CalendarView({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Calendar</h1>
+          <h1 className="text-2xl font-semibold text-neutral-900">Activity</h1>
           <p className="text-sm text-neutral-500">Per profile, each day: applied / tailored. Click a day to open that day&apos;s jobs.</p>
         </div>
         <div className="flex items-center gap-2">
