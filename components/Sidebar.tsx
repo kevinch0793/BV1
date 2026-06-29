@@ -28,6 +28,16 @@ const items = [
     icon: <path d="M3 3v18h18M7 14l3-4 4 3 5-7" />,
   },
   {
+    href: "/search",
+    label: "Search",
+    icon: (
+      <>
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.3-4.3" />
+      </>
+    ),
+  },
+  {
     href: "/settings",
     label: "Settings",
     icon: (
