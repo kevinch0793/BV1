@@ -16,6 +16,7 @@ export type CalEvent = {
   note: string | null;
   meetingType: MeetingType; // interview call type
   meetingLink: string | null; // video link, when meetingType = "video"
+  step: string | null; // interview stage id (see EVENT_STAGES)
   color: string;
 };
 
@@ -29,9 +30,21 @@ export type EventInput = {
   note: string | null;
   meetingType: MeetingType;
   meetingLink: string | null;
+  step: string | null;
   color: string;
   profileId: string | null;
 };
+
+// Interview pipeline stages, shown as a tag on each event.
+export const EVENT_STAGES = [
+  { id: "intro", label: "Intro", badge: "bg-neutral-200 text-neutral-700" },
+  { id: "hr", label: "HR", badge: "bg-sky-100 text-sky-700" },
+  { id: "tech", label: "Tech", badge: "bg-violet-100 text-violet-700" },
+  { id: "onsite", label: "Onsite", badge: "bg-amber-100 text-amber-700" },
+  { id: "final", label: "Final", badge: "bg-emerald-100 text-emerald-700" },
+  { id: "offer", label: "Offer", badge: "bg-rose-100 text-rose-700" },
+];
+export const stageOf = (id: string | null | undefined) => EVENT_STAGES.find((s) => s.id === id) ?? null;
 
 export const EVENT_COLORS = [
   { id: "sky", name: "Blue", bg: "bg-sky-500", soft: "bg-sky-100 text-sky-800", border: "border-sky-500" },

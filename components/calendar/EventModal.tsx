@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { EVENT_COLORS, longDate, type CalEvent, type EventInput } from "@/lib/calendar";
+import { EVENT_COLORS, EVENT_STAGES, longDate, type CalEvent, type EventInput } from "@/lib/calendar";
 import { createEvent, updateEvent, deleteEvent } from "@/app/actions/calendar";
 
 export type Draft = { mode: "create" | "edit"; event?: CalEvent; init: EventInput };
@@ -50,6 +50,15 @@ export function EventModal({ draft, profiles, onClose }: { draft: Draft; profile
             placeholder="Add interview title"
             className={`${inputCls} w-full text-base font-medium`}
           />
+
+          <Field label="Stage">
+            <select value={f.step ?? ""} onChange={(e) => set("step", e.target.value || null)} className={inputCls}>
+              <option value="">No stage</option>
+              {EVENT_STAGES.map((s) => (
+                <option key={s.id} value={s.id}>{s.label}</option>
+              ))}
+            </select>
+          </Field>
 
           {/* Interview meeting type + its body (phone -> profile's number, video -> link) */}
           <div className="flex w-fit gap-1 rounded-lg border border-neutral-200 p-1">

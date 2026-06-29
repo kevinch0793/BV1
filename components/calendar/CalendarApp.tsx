@@ -16,7 +16,7 @@ function blankInput(day: string, time?: string): EventInput {
   return {
     title: "", date: day, endDate: null,
     allDay: false, startTime: start, endTime: addHour(start),
-    note: null, meetingType: "video", meetingLink: null, color: "sky", profileId: null,
+    note: null, meetingType: "video", meetingLink: null, step: null, color: "sky", profileId: null,
   };
 }
 
@@ -56,7 +56,7 @@ export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; p
     setDraft({
       mode: "edit",
       event: ev,
-      init: { title: ev.title, date: ev.date, endDate: null, allDay: false, startTime: ev.startTime ?? "09:00", endTime: ev.endTime ?? addHour(ev.startTime ?? "09:00"), note: ev.note, meetingType: ev.meetingType, meetingLink: ev.meetingLink, color: ev.color, profileId: ev.profileId },
+      init: { title: ev.title, date: ev.date, endDate: null, allDay: false, startTime: ev.startTime ?? "09:00", endTime: ev.endTime ?? addHour(ev.startTime ?? "09:00"), note: ev.note, meetingType: ev.meetingType, meetingLink: ev.meetingLink, step: ev.step, color: ev.color, profileId: ev.profileId },
     });
 
   return (

@@ -1,6 +1,7 @@
 "use client";
 
 import { monthMatrix, parseYmd, onDay, cmpEvent, colorOf, fmtTime, WEEKDAYS, type CalEvent } from "@/lib/calendar";
+import { StageTag } from "@/components/calendar/StageTag";
 
 export function MonthGrid({
   cursor,
@@ -71,8 +72,9 @@ function MonthChip({ ev, onClick }: { ev: CalEvent; onClick: () => void }) {
   const stop = (e: React.MouseEvent) => { e.stopPropagation(); onClick(); };
   if (ev.allDay) {
     return (
-      <button onClick={stop} title={ev.title} className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-white ${c.bg}`}>
-        {ev.title}
+      <button onClick={stop} title={ev.title} className={`flex w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-white ${c.bg}`}>
+        <StageTag step={ev.step} />
+        <span className="truncate">{ev.title}</span>
       </button>
     );
   }
@@ -80,6 +82,7 @@ function MonthChip({ ev, onClick }: { ev: CalEvent; onClick: () => void }) {
     <button onClick={stop} title={`${fmtTime(ev.startTime)} ${ev.title}`} className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] text-neutral-700 hover:bg-neutral-100">
       <span className={`h-2 w-2 shrink-0 rounded-full ${c.bg}`} />
       {ev.startTime && <span className="shrink-0 text-neutral-500">{fmtTime(ev.startTime)}</span>}
+      <StageTag step={ev.step} />
       <span className="truncate">{ev.title}</span>
     </button>
   );

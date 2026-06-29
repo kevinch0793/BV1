@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireClient } from "@/lib/auth";
-import { EVENT_COLORS, type EventInput } from "@/lib/calendar";
+import { EVENT_COLORS, EVENT_STAGES, type EventInput } from "@/lib/calendar";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^\d{2}:\d{2}$/;
@@ -30,6 +30,7 @@ function clean(input: EventInput) {
     note: (input.note ?? "").trim().slice(0, 2000) || null,
     meetingType,
     meetingLink: meetingType === "video" ? (input.meetingLink ?? "").trim().slice(0, 500) || null : null,
+    step: EVENT_STAGES.some((s) => s.id === input.step) ? input.step : null,
     color,
     profileId: (input.profileId ?? "").trim() || null,
   };
