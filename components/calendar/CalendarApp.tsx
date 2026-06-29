@@ -21,7 +21,7 @@ function blankInput(day: string, time?: string): EventInput {
 }
 
 export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; profiles: { id: string; name: string; phone: string | null }[]; today: string }) {
-  const [view, setView] = useState<"month" | "week">("month");
+  const [view, setView] = useState<"month" | "week">("week");
   const [cursor, setCursor] = useState(today);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [primaryTz, setPrimaryTz] = useState<string | null>(null);
