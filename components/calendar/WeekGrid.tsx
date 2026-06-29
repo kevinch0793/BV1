@@ -10,6 +10,7 @@ export function WeekGrid({
   cursor,
   today,
   events,
+  primaryTz,
   secondaryTz,
   onSlotClick,
   onEventClick,
@@ -17,13 +18,15 @@ export function WeekGrid({
   cursor: string;
   today: string;
   events: CalEvent[];
+  primaryTz: string | null;
   secondaryTz: string | null;
   onSlotClick: (day: string, time: string) => void;
   onEventClick: (ev: CalEvent) => void;
 }) {
   const days = weekDays(cursor);
   const anyAllDay = days.some((day) => events.some((e) => e.allDay && onDay(e, day)));
-  const secLabels = secondaryTz ? secondaryHourLabels(secondaryTz, cursor) : null;
+  const primaryAbbr = primaryTz ? tzShort(primaryTz, cursor) : "";
+  const secLabels = secondaryTz ? secondaryHourLabels(primaryTz ?? localTimeZone(), secondaryTz, cursor) : null;
   // Header, all-day, and the hour grid all share these columns INSIDE one scroll
   // container, so the scrollbar shrinks them together and they stay aligned.
   const cols = `${secondaryTz ? "3.25rem 3.25rem" : "3.25rem"} repeat(7, minmax(0, 1fr))`;
@@ -35,7 +38,7 @@ export function WeekGrid({
         <div className="sticky top-0 z-20 bg-white">
           <div className="grid border-b border-neutral-200" style={{ gridTemplateColumns: cols }}>
             {secondaryTz && <GutterHead>{tzShort(secondaryTz, cursor)}</GutterHead>}
-            <GutterHead>{secondaryTz ? tzShort(localTimeZone(), cursor) : ""}</GutterHead>
+            <GutterHead>{primaryAbbr}</GutterHead>
             {days.map((day) => {
               const isToday = day === today;
               return (

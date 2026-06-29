@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDays, addMonths, monthTitle, weekTitle, listTimeZones, type CalEvent, type EventInput } from "@/lib/calendar";
+import { addDays, addMonths, monthTitle, weekTitle, listTimeZones, localTimeZone, type CalEvent, type EventInput } from "@/lib/calendar";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
 import { WeekGrid } from "@/components/calendar/WeekGrid";
 import { EventModal, type Draft } from "@/components/calendar/EventModal";
@@ -21,23 +21,29 @@ export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; p
   const [view, setView] = useState<"month" | "week">("month");
   const [cursor, setCursor] = useState(today);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [primaryTz, setPrimaryTz] = useState<string | null>(null);
   const [secondaryTz, setSecondaryTz] = useState<string | null>(null);
   const zones = useMemo(() => listTimeZones(), []);
 
-  // Restore the saved 2nd time zone after mount (client-only, no SSR mismatch).
+  // Restore saved time zones after mount (client-only — no SSR/hydration mismatch).
+  // Primary defaults to the browser's local zone; both are editable.
   useEffect(() => {
     try {
-      const v = localStorage.getItem("planner.secondaryTz");
-      if (v) setSecondaryTz(v);
-    } catch { /* ignore */ }
+      setPrimaryTz(localStorage.getItem("planner.primaryTz") || localTimeZone());
+      const s = localStorage.getItem("planner.secondaryTz");
+      if (s) setSecondaryTz(s);
+    } catch {
+      setPrimaryTz(localTimeZone());
+    }
   }, []);
-  const changeTz = (v: string | null) => {
-    setSecondaryTz(v);
+  const save = (key: string, v: string | null) => {
     try {
-      if (v) localStorage.setItem("planner.secondaryTz", v);
-      else localStorage.removeItem("planner.secondaryTz");
+      if (v) localStorage.setItem(key, v);
+      else localStorage.removeItem(key);
     } catch { /* ignore */ }
   };
+  const changePrimary = (v: string) => { setPrimaryTz(v); save("planner.primaryTz", v); };
+  const changeSecondary = (v: string | null) => { setSecondaryTz(v); save("planner.secondaryTz", v); };
 
   const title = view === "month" ? monthTitle(cursor) : weekTitle(cursor);
   const step = (dir: number) => setCursor(view === "month" ? addMonths(cursor, dir) : addDays(cursor, dir * 7));
@@ -71,19 +77,32 @@ export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; p
           <div className="text-lg font-semibold text-neutral-900">{title}</div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {view === "week" && (
-            <select
-              value={secondaryTz ?? ""}
-              onChange={(e) => changeTz(e.target.value || null)}
-              title="Show a second time zone alongside your local time"
-              className="max-w-[12rem] rounded-md border border-neutral-300 px-2 py-1.5 text-xs text-neutral-700 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-            >
-              <option value="">+ 2nd time zone</option>
-              {zones.map((tz) => (
-                <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
-              ))}
-            </select>
+            <>
+              <select
+                value={primaryTz ?? ""}
+                onChange={(e) => changePrimary(e.target.value)}
+                title="Primary time zone (the grid's hours)"
+                className="max-w-[11rem] rounded-md border border-neutral-300 px-2 py-1.5 text-xs text-neutral-700 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              >
+                <option value="" disabled>Time zone…</option>
+                {zones.map((tz) => (
+                  <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+                ))}
+              </select>
+              <select
+                value={secondaryTz ?? ""}
+                onChange={(e) => changeSecondary(e.target.value || null)}
+                title="Second time zone shown alongside the primary"
+                className="max-w-[11rem] rounded-md border border-neutral-300 px-2 py-1.5 text-xs text-neutral-700 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              >
+                <option value="">+ 2nd time zone</option>
+                {zones.map((tz) => (
+                  <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+                ))}
+              </select>
+            </>
           )}
           <div className="flex gap-1 rounded-lg border border-neutral-200 p-1">
             {(["month", "week"] as const).map((v) => (
@@ -96,7 +115,7 @@ export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; p
       {view === "month" ? (
         <MonthGrid cursor={cursor} today={today} events={events} onDayClick={(d) => openCreate(d)} onEventClick={openEdit} onMore={(d) => { setCursor(d); setView("week"); }} />
       ) : (
-        <WeekGrid cursor={cursor} today={today} events={events} secondaryTz={secondaryTz} onSlotClick={(d, t) => openCreate(d, t)} onEventClick={openEdit} />
+        <WeekGrid cursor={cursor} today={today} events={events} primaryTz={primaryTz} secondaryTz={secondaryTz} onSlotClick={(d, t) => openCreate(d, t)} onEventClick={openEdit} />
       )}
 
       <p className="text-xs text-neutral-400">Click a day{view === "week" ? " or time slot" : ""} to add an event; click an event to edit or delete it.</p>

@@ -148,13 +148,13 @@ export function tzOffsetMinutes(timeZone: string, date: Date): number {
   return Math.round((asUTC - date.getTime()) / 60000);
 }
 
-/** 24 hour labels for `secondaryTz`, aligned to the primary (local) hour rows of `refDay`. */
-export function secondaryHourLabels(secondaryTz: string, refDay: string): string[] {
+/** 24 hour labels for `secondaryTz`, aligned to the `primaryTz` hour rows of `refDay`. */
+export function secondaryHourLabels(primaryTz: string, secondaryTz: string, refDay: string): string[] {
   const { y, m, d } = parseYmd(refDay);
   const ref = new Date(y, m - 1, d, 0, 0);
   let delta = 0;
   try {
-    delta = tzOffsetMinutes(secondaryTz, ref) - tzOffsetMinutes(localTimeZone(), ref);
+    delta = tzOffsetMinutes(secondaryTz, ref) - tzOffsetMinutes(primaryTz, ref);
   } catch {
     return Array.from({ length: 24 }, () => "");
   }
