@@ -1,4 +1,4 @@
-import puppeteer, { type Browser } from "puppeteer";
+import puppeteer, { type Browser, type Page } from "puppeteer";
 import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
@@ -86,4 +86,81 @@ export async function renderResumePdfCached(url: string, cacheKey: string): Prom
     .then(() => fs.writeFile(file, buf))
     .catch(() => {});
   return buf;
+}
+
+// ---- Render a JS-only job page to text -------------------------------------
+// Some boards (e.g. Zoho Recruit) build the JD client-side, so it isn't in the
+// static HTML. We load the page in the warm headless Chrome, let its JS run, and
+// read the rendered text back. Bounded concurrency so a batch can't spawn a tab
+// per job; images/media/fonts are blocked for speed.
+
+const RENDER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+const MAX_RENDERS = 4;
+let activeRenders = 0;
+const renderQueue: (() => void)[] = [];
+function acquireRender(): Promise<void> {
+  return new Promise((resolve) => {
+    if (activeRenders < MAX_RENDERS) { activeRenders++; resolve(); }
+    else renderQueue.push(() => { activeRenders++; resolve(); });
+  });
+}
+function releaseRender(): void {
+  activeRenders = Math.max(0, activeRenders - 1);
+  renderQueue.shift()?.();
+}
+
+/**
+ * Load `url` in headless Chrome (running its JS) and return the job text: a
+ * schema.org JobPosting from the rendered DOM if present, else the visible body
+ * text. Returns null on failure or if nothing substantial rendered.
+ */
+export async function renderPageText(url: string): Promise<string | null> {
+  await acquireRender();
+  let page: Page | undefined;
+  try {
+    let browser = await getBrowser();
+    try {
+      page = await browser.newPage();
+    } catch {
+      browserP = null;
+      browser = await getBrowser();
+      page = await browser.newPage();
+    }
+    await page.setUserAgent(RENDER_UA);
+    await page.setRequestInterception(true);
+    page.on("request", (req) => {
+      const t = req.resourceType();
+      if (t === "image" || t === "media" || t === "font") req.abort().catch(() => {});
+      else req.continue().catch(() => {});
+    });
+    await page.goto(url, { waitUntil: "networkidle2", timeout: 25000 });
+    const text: string = await page.evaluate(() => {
+      const tidy = (s: string) => (s || "").replace(/[ \t]+/g, " ").replace(/\n\s*\n\s*\n+/g, "\n\n").trim();
+      for (const el of Array.from(document.querySelectorAll('script[type="application/ld+json"]'))) {
+        try {
+          const raw = JSON.parse(el.textContent || "null");
+          const items = Array.isArray(raw) ? raw : raw && raw["@graph"] ? raw["@graph"] : [raw];
+          for (const it of items) {
+            const type = it && it["@type"];
+            const isJob = type === "JobPosting" || (Array.isArray(type) && type.includes("JobPosting"));
+            if (isJob && it.description) {
+              const d = document.createElement("div");
+              d.innerHTML = String(it.description);
+              return tidy((it.title ? `Title: ${it.title}\n\n` : "") + (d.textContent || ""));
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      return tidy((document.body as HTMLElement | null)?.innerText || "");
+    });
+    const out = (text || "").trim();
+    return out.length >= 200 ? out : null;
+  } catch {
+    return null;
+  } finally {
+    await page?.close().catch(() => {});
+    releaseRender();
+  }
 }

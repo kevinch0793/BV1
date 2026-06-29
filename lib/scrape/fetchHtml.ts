@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { renderPageText } from "@/lib/export/pdf";
 
 export type FetchResult =
   | { ok: true; text: string; sourceUrl: string }
@@ -333,6 +334,12 @@ export async function findJobDescription(url: string): Promise<FetchResult> {
     const b = best as { text: string; sourceUrl: string };
     if (looksLikeJD(b.text) || b.text.length > page.text.length * 1.2) return { ok: true, ...b };
   }
+
+  // JS-rendered boards (e.g. Zoho Recruit) build the JD client-side, so it never
+  // appears in the static HTML. Render the page with headless Chrome and read the
+  // JD back. Done after the cheap paths so most jobs never pay for it.
+  const rendered = await renderPageText(url).catch(() => null);
+  if (rendered && (looksLikeJD(rendered) || rendered.length >= 600)) return { ok: true, text: rendered, sourceUrl: url };
 
   // Last resort: accept a reasonably-sized page. A tiny page (~200 chars) is a
   // stub/login/JS shell, not a JD — fail it so the user pastes the text.
