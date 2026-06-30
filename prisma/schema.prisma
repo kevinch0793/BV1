@@ -42,6 +42,7 @@ model CalendarEvent {
   allDay    Boolean  @default(true)
   startTime String? // "HH:MM" (24h), when not all-day
   endTime   String? // "HH:MM" (24h)
+  timeZone  String? // IANA zone the wall-clock date/startTime are anchored to (timed events)
   location  String?
   note      String?
   meetingType String? // "phone" | "video" (interview events)

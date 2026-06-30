@@ -31,10 +31,10 @@ export function WeekGrid({
   const primaryAbbr = primaryTz ? tzShort(primaryTz, cursor) : "";
   const secLabels = secondaryTz ? secondaryHourLabels(primaryTz ?? localTimeZone(), secondaryTz, cursor) : null;
 
-  // Live "current time" line — always anchored to the SYSTEM default time zone
-  // (the user's actual local time), independent of the primary-zone selector.
-  // Computed client-side and updated each minute, so there is no SSR/hydration
-  // mismatch.
+  // Live "current time" line — drawn in the display (primary) zone, which defaults
+  // to the viewer's system zone, so it moves together with the grid + events when
+  // a different zone is selected. Computed client-side and updated each minute, so
+  // there is no SSR/hydration mismatch.
   const [nowMs, setNowMs] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrolled = useRef(false);
@@ -43,7 +43,7 @@ export function WeekGrid({
     const t = setInterval(() => setNowMs(Date.now()), 60_000);
     return () => clearInterval(t);
   }, []);
-  const now = nowMs != null ? nowInTz(localTimeZone()) : null;
+  const now = nowMs != null ? nowInTz(primaryTz ?? localTimeZone()) : null;
   const showNow = !!now && days.includes(now.day);
   useEffect(() => {
     if (!scrolled.current && now && scrollRef.current) {

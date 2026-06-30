@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDays, addMonths, monthTitle, weekTitle, listTimeZones, localTimeZone, type CalEvent, type EventInput } from "@/lib/calendar";
+import { addDays, addMonths, monthTitle, weekTitle, listTimeZones, localTimeZone, toDisplayEvent, nowInTz, type CalEvent, type EventInput } from "@/lib/calendar";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
 import { WeekGrid } from "@/components/calendar/WeekGrid";
 import { EventModal, type Draft } from "@/components/calendar/EventModal";
@@ -11,11 +11,11 @@ function addHour(hm: string): string {
   const [h, m] = hm.split(":").map(Number);
   return `${pad((h + 1) % 24)}:${pad(m)}`;
 }
-function blankInput(day: string, time?: string): EventInput {
+function blankInput(day: string, time: string | undefined, timeZone: string): EventInput {
   const start = time ?? "09:00";
   return {
     company: "", role: null, date: day, endDate: null,
-    allDay: false, startTime: start, endTime: addHour(start),
+    allDay: false, startTime: start, endTime: addHour(start), timeZone,
     note: null, meetingType: "video", meetingLink: null, step: null, color: "sky", profileId: null,
   };
 }
@@ -27,6 +27,15 @@ export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; p
   const [primaryTz, setPrimaryTz] = useState<string | null>(null);
   const [secondaryTz, setSecondaryTz] = useState<string | null>(null);
   const zones = useMemo(() => listTimeZones(), []);
+
+  // Show every event in the display (primary) zone — which defaults to the
+  // viewer's system zone — so an interview reads in local time everywhere.
+  // Converting only after primaryTz is known (post-mount) keeps SSR/hydration
+  // stable: events render at their stored wall-clock for one frame, then snap
+  // into the local zone.
+  const displayTz = primaryTz ?? localTimeZone();
+  const displayEvents = useMemo(() => (primaryTz ? events.map((e) => toDisplayEvent(e, primaryTz)) : events), [events, primaryTz]);
+  const displayToday = primaryTz ? nowInTz(primaryTz).day : today;
 
   // Restore saved time zones after mount (client-only — no SSR/hydration mismatch).
   // Primary defaults to the browser's local zone; both are editable.
@@ -51,24 +60,24 @@ export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; p
   const title = view === "month" ? monthTitle(cursor) : weekTitle(cursor);
   const step = (dir: number) => setCursor(view === "month" ? addMonths(cursor, dir) : addDays(cursor, dir * 7));
 
-  const openCreate = (day: string, time?: string) => setDraft({ mode: "create", init: blankInput(day, time) });
+  const openCreate = (day: string, time?: string) => setDraft({ mode: "create", init: blankInput(day, time, displayTz) });
   const openEdit = (ev: CalEvent) =>
     setDraft({
       mode: "edit",
       event: ev,
-      init: { company: ev.company, role: ev.role, date: ev.date, endDate: null, allDay: false, startTime: ev.startTime ?? "09:00", endTime: ev.endTime ?? addHour(ev.startTime ?? "09:00"), note: ev.note, meetingType: ev.meetingType, meetingLink: ev.meetingLink, step: ev.step, color: ev.color, profileId: ev.profileId },
+      init: { company: ev.company, role: ev.role, date: ev.date, endDate: null, allDay: false, startTime: ev.startTime ?? "09:00", endTime: ev.endTime ?? addHour(ev.startTime ?? "09:00"), timeZone: displayTz, note: ev.note, meetingType: ev.meetingType, meetingLink: ev.meetingLink, step: ev.step, color: ev.color, profileId: ev.profileId },
     });
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-neutral-900">Planner</h1>
-        <button onClick={() => openCreate(today)} className="rounded-md bg-sky-700 px-3 py-2 text-sm font-medium text-white hover:bg-sky-800">+ Create event</button>
+        <button onClick={() => openCreate(displayToday)} className="rounded-md bg-sky-700 px-3 py-2 text-sm font-medium text-white hover:bg-sky-800">+ Create event</button>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <button onClick={() => setCursor(today)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100">Today</button>
+          <button onClick={() => setCursor(displayToday)} className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100">Today</button>
           <div className="flex items-center">
             <button onClick={() => step(-1)} aria-label="Previous" className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
@@ -116,9 +125,9 @@ export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; p
       </div>
 
       {view === "month" ? (
-        <MonthGrid cursor={cursor} today={today} events={events} onDayClick={(d) => openCreate(d)} onEventClick={openEdit} onMore={(d) => { setCursor(d); setView("week"); }} />
+        <MonthGrid cursor={cursor} today={displayToday} events={displayEvents} onDayClick={(d) => openCreate(d)} onEventClick={openEdit} onMore={(d) => { setCursor(d); setView("week"); }} />
       ) : (
-        <WeekGrid cursor={cursor} today={today} events={events} primaryTz={primaryTz} secondaryTz={secondaryTz} onSlotClick={(d, t) => openCreate(d, t)} onEventClick={openEdit} />
+        <WeekGrid cursor={cursor} today={displayToday} events={displayEvents} primaryTz={primaryTz} secondaryTz={secondaryTz} onSlotClick={(d, t) => openCreate(d, t)} onEventClick={openEdit} />
       )}
 
       <p className="text-xs text-neutral-400">Click a day{view === "week" ? " or time slot" : ""} to add an event; click an event to edit or delete it.</p>

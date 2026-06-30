@@ -125,6 +125,7 @@ export function EventModal({ draft, profiles, onClose }: { draft: Draft; profile
             <Field label="Start"><input type="time" value={f.startTime ?? ""} onChange={(e) => set("startTime", e.target.value || null)} className={inputCls} /></Field>
             <Field label="End"><input type="time" value={f.endTime ?? ""} onChange={(e) => set("endTime", e.target.value || null)} className={inputCls} /></Field>
           </div>
+          {f.timeZone && <p className="-mt-1 text-[11px] text-neutral-400">Times are in {f.timeZone.replace(/_/g, " ")} (your time zone)</p>}
 
           <textarea value={f.note ?? ""} onChange={(e) => set("note", e.target.value || null)} placeholder="Add notes" rows={3} className={`${inputCls} w-full`} />
 

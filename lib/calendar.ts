@@ -12,8 +12,9 @@ export type CalEvent = {
   date: string; // start day "YYYY-MM-DD"
   endDate: string | null; // end day for multi-day all-day events
   allDay: boolean;
-  startTime: string | null; // "HH:MM"
+  startTime: string | null; // "HH:MM" (in `timeZone`)
   endTime: string | null;
+  timeZone: string | null; // IANA zone the wall-clock date/start/end are anchored to
   note: string | null;
   meetingType: MeetingType; // interview call type
   meetingLink: string | null; // video link, when meetingType = "video"
@@ -29,6 +30,7 @@ export type EventInput = {
   allDay: boolean;
   startTime: string | null;
   endTime: string | null;
+  timeZone: string | null;
   note: string | null;
   meetingType: MeetingType;
   meetingLink: string | null;
@@ -205,12 +207,46 @@ const CURATED_TZS = [
   "Asia/Seoul", "Australia/Sydney", "Pacific/Auckland", "UTC",
 ];
 
-/** The current day + minutes-since-midnight in a given time zone (for the now-line). */
-export function nowInTz(timeZone: string): { day: string; minutes: number } {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date());
+/** Express an absolute instant as wall-clock {day, minutes} in a time zone. */
+export function instantInTz(instant: Date, timeZone: string): { day: string; minutes: number } {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(instant);
   const m: Record<string, string> = {};
   for (const p of parts) m[p.type] = p.value;
   return { day: `${m.year}-${m.month}-${m.day}`, minutes: +m.hour * 60 + +m.minute };
+}
+
+/** The current day + minutes-since-midnight in a given time zone (for the now-line). */
+export function nowInTz(timeZone: string): { day: string; minutes: number } {
+  return instantInTz(new Date(), timeZone);
+}
+
+/** Convert a wall-clock (day "YYYY-MM-DD", time "HH:MM") from one zone to another. */
+export function convertWallClock(day: string, hm: string, fromTz: string, toTz: string): { day: string; minutes: number } {
+  const { y, m, d } = parseYmd(day);
+  const [h, mi] = hm.split(":").map(Number);
+  const naiveUTC = Date.UTC(y, m - 1, d, h, mi);
+  try {
+    const off = tzOffsetMinutes(fromTz, new Date(naiveUTC)); // fromTz offset near that instant
+    return instantInTz(new Date(naiveUTC - off * 60000), toTz);
+  } catch {
+    return { day, minutes: h * 60 + mi }; // unknown zone → leave as-is
+  }
+}
+
+/** A copy of `e` with its timed date/start/end re-expressed in `displayTz`. All-day
+ * events are tz-agnostic and returned unchanged. */
+export function toDisplayEvent(e: CalEvent, displayTz: string): CalEvent {
+  if (e.allDay || !e.startTime) return e;
+  const fromTz = e.timeZone || displayTz;
+  if (fromTz === displayTz) return e;
+  const start = convertWallClock(e.date, e.startTime, fromTz, displayTz);
+  const fmtHM = (mins: number) => {
+    const v = (((mins % 1440) + 1440) % 1440);
+    return `${pad(Math.floor(v / 60))}:${pad(v % 60)}`;
+  };
+  const dur = e.endTime ? Math.max(0, minutesOf(e.endTime) - minutesOf(e.startTime)) : 0;
+  const endMin = Math.min(start.minutes + dur, 1439); // keep the block within the display day
+  return { ...e, date: start.day, startTime: fmtHM(start.minutes), endTime: e.endTime ? fmtHM(endMin) : null };
 }
 
 /** All IANA zones when the runtime supports it, else a curated shortlist. */
