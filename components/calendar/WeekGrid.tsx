@@ -66,7 +66,7 @@ export function WeekGrid({
             {days.map((day) => {
               const isToday = day === today;
               return (
-                <div key={day} className="border-r border-neutral-100 py-1.5 text-center last:border-r-0">
+                <div key={day} className="border-r border-neutral-200 py-1.5 text-center last:border-r-0">
                   <div className="text-[10px] uppercase text-neutral-500">{WEEKDAYS[dowOf(day)]}</div>
                   <div className={`mx-auto mt-0.5 grid h-7 w-7 place-items-center rounded-full text-sm ${isToday ? "bg-sky-600 font-semibold text-white" : "text-neutral-800"}`}>{parseYmd(day).d}</div>
                 </div>
@@ -76,10 +76,10 @@ export function WeekGrid({
 
           {anyAllDay && (
             <div className="grid border-b border-neutral-200 bg-neutral-50/60" style={{ gridTemplateColumns: cols }}>
-              {secondaryTz && <div className="border-r border-neutral-100" />}
-              <div className="flex items-start justify-end border-r border-neutral-100 px-1 pt-1 text-[9px] uppercase text-neutral-400">All-day</div>
+              {secondaryTz && <div className="border-r border-neutral-200" />}
+              <div className="flex items-start justify-end border-r border-neutral-200 px-1 pt-1 text-[9px] uppercase text-neutral-400">All-day</div>
               {days.map((day) => (
-                <div key={day} className="min-h-[26px] space-y-0.5 border-r border-neutral-100 p-0.5 last:border-r-0">
+                <div key={day} className="min-h-[26px] space-y-0.5 border-r border-neutral-200 p-0.5 last:border-r-0">
                   {events.filter((e) => e.allDay && onDay(e, day)).map((e) => {
                     const c = colorOf(e.color);
                     return (
@@ -117,12 +117,12 @@ export function WeekGrid({
 }
 
 function GutterHead({ children }: { children: React.ReactNode }) {
-  return <div className="flex items-end justify-end border-r border-neutral-100 px-1 pb-1 text-[9px] font-medium text-neutral-400">{children}</div>;
+  return <div className="flex items-end justify-end border-r border-neutral-200 px-1 pb-1 text-[9px] font-medium text-neutral-400">{children}</div>;
 }
 
 function HourGutter({ labels }: { labels: string[] }) {
   return (
-    <div className="relative border-r border-neutral-100" style={{ height: 24 * HOUR_H }}>
+    <div className="relative border-r border-neutral-200" style={{ height: 24 * HOUR_H }}>
       {labels.map((l, h) => (
         <div key={h} className="absolute right-1 -translate-y-1/2 whitespace-nowrap text-[10px] text-neutral-400" style={{ top: h * HOUR_H }}>{l}</div>
       ))}
@@ -138,9 +138,9 @@ function DayColumn({ day, events, nowMinutes, onSlotClick, onEventClick }: { day
     onSlotClick(day, `${pad(hour)}:00`);
   }
   return (
-    <div className="relative cursor-pointer border-r border-neutral-100 last:border-r-0 hover:bg-sky-50/30" style={{ height: 24 * HOUR_H }} onClick={handleClick}>
+    <div className="relative cursor-pointer border-r border-neutral-200 last:border-r-0 hover:bg-sky-50/30" style={{ height: 24 * HOUR_H }} onClick={handleClick}>
       {HOURS.map((h) => (
-        <div key={h} className="pointer-events-none absolute inset-x-0 border-t border-neutral-100" style={{ top: h * HOUR_H }} />
+        <div key={h} className="pointer-events-none absolute inset-x-0 border-t border-neutral-300" style={{ top: h * HOUR_H }} />
       ))}
       {nowMinutes != null && (
         <div className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-red-500" style={{ top: (nowMinutes / 60) * HOUR_H }}>

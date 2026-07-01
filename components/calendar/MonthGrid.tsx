@@ -40,7 +40,7 @@ export function MonthGrid({
             <div
               key={day}
               onClick={() => onDayClick(day)}
-              className={`min-h-[108px] cursor-pointer border-b border-r border-neutral-100 p-1 ${i % 7 === 6 ? "border-r-0" : ""} ${i >= 35 ? "border-b-0" : ""} ${inMonth ? "bg-white" : "bg-neutral-50/60"} hover:bg-sky-50/40`}
+              className={`min-h-[108px] cursor-pointer border-b border-r border-neutral-200 p-1 ${i % 7 === 6 ? "border-r-0" : ""} ${i >= 35 ? "border-b-0" : ""} ${inMonth ? "bg-white" : "bg-neutral-50/60"} hover:bg-sky-50/40`}
             >
               <div className="flex justify-end">
                 <span className={`grid h-6 w-6 place-items-center rounded-full text-xs ${isToday ? "bg-sky-600 font-semibold text-white" : inMonth ? "text-neutral-700" : "text-neutral-400"}`}>
