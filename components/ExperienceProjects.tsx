@@ -63,43 +63,34 @@ export function ExperienceProjects({
     <div className="space-y-3">
       <input ref={hiddenRef} type="hidden" name="projects" value={serialized} readOnly />
       <div className="text-xs font-medium text-neutral-600">
-        Projects at this company {multi ? "(each gets a title)" : "(single — title hidden on resume)"}
+        Projects at this company — name, kind, and domains it can cover {multi ? "(each gets a title)" : "(single — title hidden on resume)"}
       </div>
       {groups.map((g, i) => (
-        <div key={i} className="rounded-md border border-neutral-200 p-2.5">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <input
-              className={input}
-              placeholder="Name — short and/or expanded (e.g. PMax; Google Ads Performance Max)"
-              value={g.name}
-              onChange={(e) => set(i, { name: e.target.value })}
-            />
-            <input
-              className={input}
-              placeholder="Kind (e.g. Ads foundation model)"
-              value={g.type}
-              onChange={(e) => set(i, { type: e.target.value })}
-            />
-          </div>
+        <div key={i} className="space-y-2 rounded-md border border-neutral-200 p-2.5">
+          <input
+            className={input}
+            placeholder="Name — short and/or expanded (e.g. PMax; Google Ads Performance Max)"
+            value={g.name}
+            onChange={(e) => set(i, { name: e.target.value })}
+          />
+          <input
+            className={input}
+            placeholder="Kind (e.g. Ads foundation model)"
+            value={g.type}
+            onChange={(e) => set(i, { type: e.target.value })}
+          />
           <textarea
-            className={`${input} mt-2`}
+            className={input}
             rows={2}
             placeholder="Domains / industries it can cover (e.g. Ads, retail, e-commerce, ML ranking, bidding, recommendations)"
             value={g.domain}
             onChange={(e) => set(i, { domain: e.target.value })}
           />
-          <textarea
-            className={`${input} mt-2`}
-            rows={3}
-            placeholder="Bullets (one per line)"
-            value={g.bullets}
-            onChange={(e) => set(i, { bullets: e.target.value })}
-          />
           {groups.length > 1 && (
             <button
               type="button"
               onClick={() => remove(i)}
-              className="mt-1 text-xs text-red-600 hover:underline"
+              className="text-xs text-red-600 hover:underline"
             >
               Remove project
             </button>

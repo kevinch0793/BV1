@@ -12,8 +12,8 @@ export const LinkSchema = z.object({
 
 // A project subgroup within one company's experience (the theme of work there).
 const ProjectGroupSchema = z.object({
-  name: z.string().describe("Official project name; empty if the company has a single unnamed group"),
-  type: z.string().describe("Kind of project, e.g. Ads foundation model, Internal platform"),
+  name: z.string().describe("SHORT project name or acronym ONLY (e.g. 'PMax') — never the expanded form or a phrase; empty if the company has a single unnamed group"),
+  type: z.string().describe("Concise kind, a few words (e.g. 'Ads automation') — NOT a full sentence"),
   bullets: z.array(z.string()).describe("Achievement-oriented, JD-aligned"),
 });
 
