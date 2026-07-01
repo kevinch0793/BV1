@@ -1,3 +1,5 @@
+import type { ResumeContent } from "@/lib/llm/schema";
+
 // Strip non-hyphen dashes from generated/displayed resume text.
 //
 // Humans type the plain hyphen-minus (U+002D). The "middle" en dash (U+2013)
@@ -19,4 +21,38 @@ export function deepStripDashes<T>(value: T): T {
     return out as unknown as T;
   }
   return value;
+}
+
+// Within each experience, drop bullets that repeat across project subgroups (a
+// NAMED subgroup keeps the bullet), then drop any subgroup left with no bullets.
+// Guards against the tailor emitting the same bullets under both an unnamed
+// default subgroup AND a named one, which the template renders as duplicated
+// bullets with a title wedged between them.
+export function dedupeExperienceProjects(content: ResumeContent): ResumeContent {
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  return {
+    ...content,
+    experience: content.experience.map((e) => {
+      const projects = e.projects ?? [];
+      // Bullets that appear in a named subgroup win — record them first.
+      const claimed = new Set<string>();
+      for (const p of projects) {
+        if (p.name || p.type) for (const b of p.bullets) { const k = norm(b); if (k) claimed.add(k); }
+      }
+      const seen = new Set<string>();
+      const cleaned = projects.map((p) => {
+        const named = !!(p.name || p.type);
+        const bullets = p.bullets.filter((b) => {
+          const k = norm(b);
+          if (!k) return false;
+          if (!named && claimed.has(k)) return false; // duplicate of a named subgroup's bullet
+          if (seen.has(k)) return false; // duplicate across subgroups (keep the first)
+          seen.add(k);
+          return true;
+        });
+        return { ...p, bullets };
+      });
+      return { ...e, projects: cleaned.filter((p) => p.bullets.length > 0) };
+    }),
+  };
 }

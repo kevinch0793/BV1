@@ -2,7 +2,7 @@ import { generateStructuredOpenAI } from "@/lib/llm/openai";
 import { generateStructured, DEFAULT_MODEL as CLAUDE_TAILOR_MODEL } from "@/lib/llm/anthropic";
 import { generateStructuredOpenRouter, hasOpenRouter } from "@/lib/llm/openrouter";
 import { generateStructuredExtract } from "@/lib/llm/balance";
-import { deepStripDashes } from "@/lib/sanitize";
+import { deepStripDashes, dedupeExperienceProjects } from "@/lib/sanitize";
 import {
   JobFieldsSchema,
   ParsedProfileSchema,
@@ -104,8 +104,9 @@ export async function tailorResume(args: {
   // Tailoring runs on Claude (extraction stays on OpenAI). Claude follows the
   // volume/format guidelines (4-7 bullets/subgroup, no cliché openers) reliably.
   const content = await tailorViaProvider(built.system, built.prompt, args.model);
-  // Normalize en/em dashes to plain hyphens (humans don't type the long ones).
-  return deepStripDashes(content);
+  // Normalize en/em dashes to plain hyphens (humans don't type the long ones),
+  // then drop any bullets duplicated across a company's subgroups.
+  return dedupeExperienceProjects(deepStripDashes(content));
 }
 
 // Round-robin tailoring across the direct Anthropic account and OpenRouter (same
