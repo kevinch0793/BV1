@@ -10,9 +10,9 @@ import { assertOwnsProfile } from "@/lib/owner";
 const str = (v: FormDataEntryValue | null) => String(v ?? "").trim();
 const orNull = (v: FormDataEntryValue | null) => str(v) || null;
 
-type ProjectGroup = { name: string; type: string; bullets: string[] };
+type ProjectGroup = { name: string; type: string; domain: string; bullets: string[] };
 
-// Parse the editor's hidden `projects` field (JSON: [{name,type,bullets:string[]}]).
+// Parse the editor's hidden `projects` field (JSON: [{name,type,domain,bullets:string[]}]).
 // Always returns ≥1 subgroup so every company keeps a theme slot.
 function parseProjects(v: FormDataEntryValue | null): ProjectGroup[] {
   let raw: unknown;
@@ -26,10 +26,10 @@ function parseProjects(v: FormDataEntryValue | null): ProjectGroup[] {
     const bullets = Array.isArray(o.bullets)
       ? o.bullets.map((b) => String(b).replace(/^[-•\s]+/, "").trim()).filter(Boolean)
       : [];
-    return { name: String(o.name ?? "").trim(), type: String(o.type ?? "").trim(), bullets };
+    return { name: String(o.name ?? "").trim(), type: String(o.type ?? "").trim(), domain: String(o.domain ?? "").trim(), bullets };
   });
-  const kept = groups.filter((g) => g.name || g.type || g.bullets.length);
-  return kept.length ? kept : [{ name: "", type: "", bullets: [] }];
+  const kept = groups.filter((g) => g.name || g.type || g.domain || g.bullets.length);
+  return kept.length ? kept : [{ name: "", type: "", domain: "", bullets: [] }];
 }
 
 // ---- Profile ----------------------------------------------------------------
@@ -246,8 +246,8 @@ export async function parseResumeIntoProfile(
       for (const [i, e] of parsed.experiences.entries()) {
         const projects =
           e.projects?.length
-            ? e.projects.map((g) => ({ name: g.name, type: g.type, bullets: g.bullets }))
-            : [{ name: "", type: "", bullets: [] }];
+            ? e.projects.map((g) => ({ name: g.name, type: g.type, domain: "", bullets: g.bullets }))
+            : [{ name: "", type: "", domain: "", bullets: [] }];
         await tx.experience.create({
           data: {
             profileId,

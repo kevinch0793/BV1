@@ -21,6 +21,7 @@ export function asProjectGroups(v: unknown): ProjectGroup[] {
     return {
       name: typeof o.name === "string" ? o.name : "",
       type: typeof o.type === "string" ? o.type : "",
+      domain: typeof o.domain === "string" ? o.domain : "",
       bullets: asStringArray(o.bullets),
     };
   });

@@ -108,7 +108,7 @@ model Experience {
   startDate String?
   endDate   String?
   current   Boolean  @default(false)
-  projects  Json? // [{ name, type, bullets: string[] }] — per-company subgroups (theme)
+  projects  Json? // [{ name, type, domain, bullets: string[] }] — per-company subgroups (theme)
   order     Int      @default(0)
 }
 

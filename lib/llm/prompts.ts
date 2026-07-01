@@ -2,7 +2,7 @@
 // base resume, and generate a resume from scratch. Each returns { system, prompt }.
 
 /** A project subgroup inside one company: the theme of work there. */
-export type ProjectGroup = { name: string; type: string; bullets: string[] };
+export type ProjectGroup = { name: string; type: string; domain: string; bullets: string[] };
 
 export type ProfileForLLM = {
   fullName: string;
@@ -54,13 +54,14 @@ function serializeProfile(p: ProfileForLLM): string {
 
   if (p.experiences.length) {
     lines.push(
-      `\n## Work experience (each company's bullets are grouped into project subgroups — the theme of work there. Project names + types are authoritative; do not invent them.)`,
+      `\n## Work experience (each company's bullets are grouped into project subgroups — the theme of work there. Project NAMES are authoritative; never invent or rename. A project's KIND may be lightly re-worded to mirror the JD's framing (stay truthful to what it is). "Can cover" lists the domains/industries a subgroup can legitimately speak to — use it to pick which angle to emphasize in the bullets and the kind for THIS JD; never claim a domain it can't cover.)`,
     );
     for (const e of p.experiences) {
       const dates = `${e.startDate ?? "?"} – ${e.current ? "Present" : e.endDate ?? "?"}`;
       lines.push(`- ${e.role} at ${e.company} (${e.location ?? ""}) [${dates}]`);
       for (const pr of e.projects ?? []) {
         if (pr.name || pr.type) lines.push(`  ▸ Project: ${pr.name}${pr.type ? ` — ${pr.type}` : ""}`);
+        if (pr.domain) lines.push(`    ↳ Can cover: ${pr.domain}`);
         for (const b of pr.bullets) lines.push(`    • ${b}`);
       }
     }
@@ -101,7 +102,7 @@ const TAILORING_RULES = `Rules:
 - Tailor STRONGLY to the job description. First identify the JD's MUST-HAVE and PREFERRED skills/keywords (from its requirements and description). Mirror that exact terminology and lead with the most JD-relevant content.
 - Mirror the JD's keywords, but distinguish two kinds. CONCRETE skills (named tools/tech/languages/frameworks/platforms) may go in the SKILLS section and bullets where the candidate plausibly has them. CONCEPTUAL phrases (architectures, activities, qualities — e.g. multi-tenant, modernization, migration, infrastructure assessment, code reusability, maintainability) must NEVER be listed in the SKILLS section; reflect them only inside a bullet/summary where the candidate's real work genuinely demonstrates them. Do not blindly paste JD wording to inflate keyword match, and never invent experience.
 - PROOF OVER REPETITION: for each key JD requirement/theme, write ONE bullet that proves it in the JD's exact wording, ideally with a measurable result (a number) — e.g. JD wants "Customer Success" -> "Led migration to a new Customer Success platform, lifting renewal rate 23%". That one line does double duty: it matches the algorithm AND proves it to a human. Use each JD keyword ONCE, in its single strongest place (a hard skill in SKILLS; a theme in its proof-bullet). Do NOT restate the same keyword across the summary, skills, and several bullets — repetition adds zero ATS value and a human instantly reads repeated buzzwords as a red flag. It's about the RIGHT keywords, not many. (Agile and the AI dev tools are the only deliberate always-include items, per the guidelines below.)
-- Output structure: every work-experience entry contains one or more PROJECT SUBGROUPS (the theme of work at that company: official name + kind). Put each bullet inside the relevant subgroup. Preserve the candidate's given project names/types — do NOT invent or rename projects. If a company has a single unnamed subgroup, keep its name/type empty and just place bullets there.
+- Output structure: every work-experience entry contains one or more PROJECT SUBGROUPS (the theme of work at that company: official name + kind). Put each bullet inside the relevant subgroup. Project NAMES are authoritative — never invent or rename them. A project's KIND may be lightly re-worded to mirror the JD's framing, staying truthful to what the project actually is. When a subgroup lists "Can cover" domains, use them to choose which industry angle to emphasize in its bullets and kind so the resume speaks to the JD — but never claim a domain the project can't cover. If a company has a single unnamed subgroup, keep its name/type empty and just place bullets there.
 - Rewrite bullets to be achievement-oriented and quantified where the source supports it; start with strong action verbs.
 - NEVER fabricate employers, job titles, dates, degrees, or specific numeric metrics that aren't supported. You MAY add JD skills/keywords and rephrase; you may NOT invent facts of record.
 - Keep it truthful, concise, and ATS-friendly. Fill every schema field; use empty strings/arrays where a section genuinely has no content.`;
@@ -188,7 +189,7 @@ export function buildTailorWithBasePrompt(args: {
       `# Candidate profile (supplementary facts)\n${serializeProfile(args.profile)}`,
       `# Candidate's existing base resume (primary source of truth)\n"""\n${args.baseResume.slice(0, 40000)}\n"""`,
       args.instructions ? `# Extra user instructions (follow these)\n${args.instructions}` : "",
-      `# Task\nRewrite and reorganize the base resume into a tailored resume strongly aligned with the job description. Group each company's bullets under its project subgroups (use the profile's project names/types as the authoritative themes). Cover the ATS keywords listed above. Honor the extra user instructions.`,
+      `# Task\nRewrite and reorganize the base resume into a tailored resume strongly aligned with the job description. Group each company's bullets under its project subgroups: keep the profile's project NAMES exactly (authoritative), but you MAY lightly re-word a project's KIND to mirror the JD and emphasize whichever of its "Can cover" domains best fits this JD. Cover the ATS keywords listed above. Honor the extra user instructions.`,
     ]
       .filter(Boolean)
       .join("\n\n"),
@@ -204,7 +205,7 @@ export function buildFromScratchPrompt(args: {
   skills?: SkillsSize;
 }) {
   return {
-    system: `You are an expert resume writer. You build a tailored resume from a candidate's structured profile when no base resume exists. ${TAILORING_RULES}\n- Each company's project subgroups (name + kind) are authoritative anchors — keep them, and expand each subgroup's bullets into JD-aligned, achievement-oriented points without inventing the underlying facts.\n\n${resumeGuidelines(args.skills ?? SKILLS_SIZE_DEFAULT)}`,
+    system: `You are an expert resume writer. You build a tailored resume from a candidate's structured profile when no base resume exists. ${TAILORING_RULES}\n- Each company's project subgroups are anchors: keep NAMES exactly (never invent/rename), and expand each subgroup's bullets into JD-aligned, achievement-oriented points without inventing the underlying facts. A subgroup's KIND may be lightly re-worded to mirror the JD, and its "Can cover" domains tell you which industry angle to emphasize for this JD (never claim a domain it can't cover).\n\n${resumeGuidelines(args.skills ?? SKILLS_SIZE_DEFAULT)}`,
     prompt: [
       `# Job description\n${serializeJob(args.job)}`,
       atsSkillsBlock(args.atsSkills),

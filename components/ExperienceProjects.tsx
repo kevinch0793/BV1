@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type Group = { name: string; type: string; bullets: string }; // bullets edited as text
+type Group = { name: string; type: string; domain: string; bullets: string }; // bullets edited as text
 
 const input =
   "w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500";
@@ -17,11 +17,12 @@ const input =
 export function ExperienceProjects({
   defaultProjects,
 }: {
-  defaultProjects: { name: string; type: string; bullets: string[] }[];
+  defaultProjects: { name: string; type: string; domain: string; bullets: string[] }[];
 }) {
-  const init: Group[] = (defaultProjects.length ? defaultProjects : [{ name: "", type: "", bullets: [] }]).map((g) => ({
+  const init: Group[] = (defaultProjects.length ? defaultProjects : [{ name: "", type: "", domain: "", bullets: [] }]).map((g) => ({
     name: g.name,
     type: g.type,
+    domain: g.domain,
     bullets: g.bullets.join("\n"),
   }));
   const [groups, setGroups] = useState<Group[]>(init);
@@ -32,6 +33,7 @@ export function ExperienceProjects({
     groups.map((g) => ({
       name: g.name.trim(),
       type: g.type.trim(),
+      domain: g.domain.trim(),
       bullets: g.bullets.split("\n").map((b) => b.trim()).filter(Boolean),
     })),
   );
@@ -49,7 +51,7 @@ export function ExperienceProjects({
     setGroups((gs) => gs.map((g, idx) => (idx === i ? { ...g, ...patch } : g)));
   }
   function add() {
-    setGroups((gs) => [...gs, { name: "", type: "", bullets: "" }]);
+    setGroups((gs) => [...gs, { name: "", type: "", domain: "", bullets: "" }]);
   }
   function remove(i: number) {
     setGroups((gs) => (gs.length <= 1 ? gs : gs.filter((_, idx) => idx !== i)));
@@ -68,7 +70,7 @@ export function ExperienceProjects({
           <div className="grid gap-2 sm:grid-cols-2">
             <input
               className={input}
-              placeholder="Project name (e.g. GEM)"
+              placeholder="Name — short and/or expanded (e.g. PMax; Google Ads Performance Max)"
               value={g.name}
               onChange={(e) => set(i, { name: e.target.value })}
             />
@@ -79,6 +81,13 @@ export function ExperienceProjects({
               onChange={(e) => set(i, { type: e.target.value })}
             />
           </div>
+          <textarea
+            className={`${input} mt-2`}
+            rows={2}
+            placeholder="Domains / industries it can cover (e.g. Ads, retail, e-commerce, ML ranking, bidding, recommendations)"
+            value={g.domain}
+            onChange={(e) => set(i, { domain: e.target.value })}
+          />
           <textarea
             className={`${input} mt-2`}
             rows={3}
