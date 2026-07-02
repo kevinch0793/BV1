@@ -5,6 +5,7 @@ import { fitColor } from "@/lib/fit";
 import { fuzzyScore } from "@/lib/fuzzy";
 import { workplaceOf, briefState, type Workplace } from "@/lib/location";
 import { ColumnSearch } from "@/components/ColumnSearch";
+import { ViewResumeButton } from "@/components/ViewResumeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ const WORKPLACE_STYLE: Record<Workplace, string> = {
 
 type Row = {
   id: string; company: string | null; role: string | null; location: string | null; workplace: string | null;
-  status: string; applyStatus: string; url: string | null; profileId: string; profileName: string;
+  status: string; applyStatus: string; appliedAt: Date | null; url: string | null; profileId: string; profileName: string;
   tailoredId: string | null; fitAfter: number | null;
 };
 
@@ -39,7 +40,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
     const recent = await prisma.jobPosting.findMany({
       where: jobScope,
       select: {
-        id: true, company: true, role: true, location: true, workplace: true, status: true, applyStatus: true, url: true, profileId: true,
+        id: true, company: true, role: true, location: true, workplace: true, status: true, applyStatus: true, appliedAt: true, url: true, profileId: true,
         profile: { select: { fullName: true, label: true } },
         tailored: { select: { id: true, fitAfter: true }, orderBy: { createdAt: "desc" }, take: 1 },
       },
@@ -47,7 +48,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
       take: LIMIT,
     });
     rows = recent.map((j) => ({
-      id: j.id, company: j.company, role: j.role, location: j.location, workplace: j.workplace, status: j.status, applyStatus: j.applyStatus, url: j.url,
+      id: j.id, company: j.company, role: j.role, location: j.location, workplace: j.workplace, status: j.status, applyStatus: j.applyStatus, appliedAt: j.appliedAt, url: j.url,
       profileId: j.profileId, profileName: j.profile.fullName || j.profile.label, tailoredId: j.tailored[0]?.id ?? null, fitAfter: j.tailored[0]?.fitAfter ?? null,
     }));
     total = rows.length;
@@ -57,7 +58,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
     const [jobs, profiles, tailored] = await Promise.all([
       prisma.jobPosting.findMany({
         where: jobScope,
-        select: { id: true, company: true, role: true, location: true, workplace: true, status: true, applyStatus: true, url: true, profileId: true },
+        select: { id: true, company: true, role: true, location: true, workplace: true, status: true, applyStatus: true, appliedAt: true, url: true, profileId: true },
         orderBy: { createdAt: "desc" },
       }),
       prisma.profile.findMany({ where: await profileWhere(), select: { id: true, fullName: true, label: true } }),
@@ -77,7 +78,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
       const t = tailoredOf.get(j.id);
       scored.push({
         score: s,
-        row: { id: j.id, company: j.company, role: j.role, location: j.location, workplace: j.workplace, status: j.status, applyStatus: j.applyStatus, url: j.url, profileId: j.profileId, profileName: name, tailoredId: t?.id ?? null, fitAfter: t?.fitAfter ?? null },
+        row: { id: j.id, company: j.company, role: j.role, location: j.location, workplace: j.workplace, status: j.status, applyStatus: j.applyStatus, appliedAt: j.appliedAt, url: j.url, profileId: j.profileId, profileName: name, tailoredId: t?.id ?? null, fitAfter: t?.fitAfter ?? null },
       });
     }
     scored.sort((a, b) => b.score - a.score); // best matches first; ties keep recency (stable sort)
@@ -109,14 +110,15 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
               <Th title="Profile"><ColumnSearch param="profile" placeholder="Filter profile" initial={profile} /></Th>
               <Th title="Location" />
               <Th title="ATS" />
-              <Th title="Status" />
+              <Th title="JD" />
+              <Th title="Applied" />
               <th className="px-4 py-2.5" />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-sm text-neutral-400">No jobs match these filters.</td>
+                <td colSpan={8} className="px-4 py-10 text-center text-sm text-neutral-400">No jobs match these filters.</td>
               </tr>
             ) : (
               rows.map((j) => (
@@ -140,9 +142,18 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                       <span className="text-neutral-300">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3"><StatusBadge applyStatus={j.applyStatus} status={j.status} tailored={!!j.tailoredId} /></td>
+                  <td className="px-4 py-3">
+                    {j.url ? (
+                      <a href={j.url} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap text-xs font-medium text-sky-700 hover:underline">Open&nbsp;↗</a>
+                    ) : (
+                      <span className="text-neutral-300">—</span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-neutral-600">
+                    {j.applyStatus === "applied" && j.appliedAt ? fmtDate(j.appliedAt) : <span className="text-neutral-300">—</span>}
+                  </td>
                   <td className="px-4 py-3 text-right">
-                    {j.tailoredId && <Link href={`/resume/${j.tailoredId}`} className="whitespace-nowrap text-xs font-medium text-sky-700 hover:underline">View resume</Link>}
+                    {j.tailoredId && <ViewResumeButton tailoredId={j.tailoredId} />}
                   </td>
                 </tr>
               ))
@@ -175,14 +186,6 @@ function LocationBadge({ workplace, location }: { workplace: string | null; loca
   );
 }
 
-function StatusBadge({ applyStatus, status, tailored }: { applyStatus: string; status: string; tailored: boolean }) {
-  if (applyStatus === "applied") return <Badge className="bg-sky-100 text-sky-700">Applied</Badge>;
-  if (status === "failed") return <Badge className="bg-rose-100 text-rose-700">Failed</Badge>;
-  if (tailored) return <Badge className="bg-emerald-100 text-emerald-700">Tailored</Badge>;
-  if (status === "fetched") return <Badge className="bg-neutral-100 text-neutral-600">Fetched</Badge>;
-  return <Badge className="bg-neutral-100 text-neutral-500">Pending</Badge>;
-}
-
-function Badge({ className, children }: { className: string; children: React.ReactNode }) {
-  return <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${className}`}>{children}</span>;
+function fmtDate(d: Date): string {
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
