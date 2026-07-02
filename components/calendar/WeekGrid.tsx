@@ -5,7 +5,7 @@ import { weekDays, parseYmd, dowOf, onDay, minutesOf, fmtTime, colorOf, secondar
 import { StageTag } from "@/components/calendar/StageTag";
 import { MeetingIcon } from "@/components/calendar/MeetingIcon";
 
-const HOUR_H = 64; // px per hour row — tall enough to distinguish 15/20/30/45-min blocks
+const HOUR_H = 44; // px per hour row
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -151,7 +151,7 @@ function DayColumn({ day, events, nowMinutes, onSlotClick, onEventClick }: { day
         const start = minutesOf(ev.startTime);
         const end = ev.endTime ? minutesOf(ev.endTime) : start + 60;
         const top = (start / 60) * HOUR_H;
-        const height = Math.max(12, ((end - start) / 60) * HOUR_H - 2);
+        const height = Math.max(18, ((end - start) / 60) * HOUR_H - 2);
         const c = colorOf(ev.color);
         return (
           <button
