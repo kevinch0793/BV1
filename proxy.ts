@@ -37,9 +37,10 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Guard everything except Next internals, static assets, the print page and the
-  // export API (both reachable by cookieless headless-Chrome PDF rendering).
+  // Guard everything except Next internals, static assets, the print page, the
+  // export API (both reachable by cookieless headless-Chrome PDF rendering), and
+  // the application-answer API (token-authed, called cross-origin by the extension).
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|print/|api/export/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|print/|api/export/|api/answer|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

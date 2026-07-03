@@ -1,0 +1,68 @@
+// Draft plain-text answers to open-ended job-application questions, grounded in a
+// candidate profile. Structured output (the LLM layer is structured-only), with the
+// same Anthropic/OpenRouter round-robin as tailoring (lib/llm/service.ts).
+import { z } from "zod";
+import { generateStructured, DEFAULT_MODEL as CLAUDE_MODEL } from "@/lib/llm/anthropic";
+import { generateStructuredOpenRouter, hasOpenRouter } from "@/lib/llm/openrouter";
+
+export const AnswerSchema = z.object({
+  answers: z.array(
+    z.object({
+      question: z.string().describe("The question, echoed verbatim"),
+      answer: z
+        .string()
+        .describe("First-person, plain-text answer grounded in the candidate's real background — no markdown, no bullet points"),
+    }),
+  ),
+});
+
+const SYSTEM = `You help a job seeker answer the OPEN-ENDED (free-text) questions on a job application, drafting each answer from their real background.
+
+Rules:
+- Ground every answer ONLY in the candidate's provided background (resume + profile). NEVER invent employers, titles, dates, degrees, metrics, or experience they don't have.
+- Write in the first person ("I"), natural and specific. PLAIN TEXT ONLY — no markdown, no bullet points, no headings; the text goes straight into a form field.
+- Be concise: roughly 60-120 words, unless the question clearly calls for more (or a short sentence for a simple one).
+- Use the job description (when provided) to make "why this role / why this company / what interests you" answers specific and relevant.
+- If a question isn't supported by the background, answer briefly and honestly instead of fabricating.
+- Return exactly one answer per question, in the same order, echoing each question.`;
+
+let rr = 0;
+
+/** Draft one plain-text answer per question, grounded in `profileText` (+ JD). */
+export async function answerApplicationQuestions(args: {
+  profileText: string;
+  jobText?: string;
+  questions: string[];
+  customInstructions?: string;
+}): Promise<{ question: string; answer: string }[]> {
+  const prompt = [
+    `# Candidate background\n${args.profileText}`,
+    args.jobText ? `# Job description\n${args.jobText}` : "",
+    args.customInstructions ? `# Extra style guidance (tone)\n${args.customInstructions}` : "",
+    `# Application questions (answer each in plain text)\n${args.questions.map((q, i) => `${i + 1}. ${q}`).join("\n")}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const providers: Array<"anthropic" | "openrouter"> = [];
+  if (process.env.ANTHROPIC_API_KEY) providers.push("anthropic");
+  if (hasOpenRouter()) providers.push("openrouter");
+  if (providers.length === 0) providers.push("anthropic"); // surfaces a clear "key not set" error
+
+  const start = rr++ % providers.length;
+  const order = [...providers.slice(start), ...providers.slice(0, start)];
+
+  let lastErr: unknown;
+  for (const p of order) {
+    try {
+      const res =
+        p === "openrouter"
+          ? await generateStructuredOpenRouter({ schema: AnswerSchema, schemaName: "application_answers", system: SYSTEM, prompt, model: CLAUDE_MODEL, maxTokens: 4000 })
+          : await generateStructured({ schema: AnswerSchema, system: SYSTEM, prompt, model: CLAUDE_MODEL, maxTokens: 4000 });
+      return res.answers;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}

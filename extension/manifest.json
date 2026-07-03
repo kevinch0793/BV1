@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Application Answer Filler",
+  "version": "1.0.0",
+  "description": "Auto-drafts the open-ended (free-text) questions on job-application pages from your resume profile.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Fill open-ended answers" },
+  "options_page": "options.html"
+}

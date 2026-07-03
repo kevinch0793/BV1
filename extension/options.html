@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Application Answer Filler — Options</title>
+    <style>
+      body { font: 14px system-ui, sans-serif; padding: 22px; max-width: 520px; color: #111; }
+      h2 { margin: 0 0 4px; }
+      p.sub { color: #666; margin: 0 0 16px; }
+      label { display: block; margin: 16px 0 4px; font-weight: 600; }
+      input { width: 100%; padding: 9px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+      .hint { color: #777; font-size: 12px; margin-top: 3px; }
+      button { margin-top: 18px; padding: 9px 16px; border: 0; border-radius: 6px; background: #111; color: #fff; font-weight: 600; cursor: pointer; }
+      .ok { color: #059669; margin-left: 10px; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <h2>Application Answer Filler</h2>
+    <p class="sub">Point this at your deployed app and paste the token from Settings.</p>
+
+    <label for="appUrl">App URL</label>
+    <input id="appUrl" placeholder="https://your-app.example.com" />
+    <div class="hint">Your deployed app's base URL. Trailing slash optional.</div>
+
+    <label for="token">API token</label>
+    <input id="token" type="password" placeholder="paste the token from Settings" />
+    <div class="hint">In the app: Settings → Application-answer extension → Generate token.</div>
+
+    <button id="save">Save</button><span id="status" class="ok"></span>
+
+    <script src="options.js"></script>
+  </body>
+</html>

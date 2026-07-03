@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { randomBytes, createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { parseSectionOrder } from "@/lib/settings";
 import { requireClient } from "@/lib/auth";
@@ -50,6 +51,34 @@ export async function updateSettings(formData: FormData) {
     create: { clientId, customInstructions },
     update: { customInstructions },
   });
+  revalidatePath("/settings");
+}
+
+// ---- Application-answer API token (for the browser extension) ----
+
+/** Mint a fresh API token, store only its SHA-256, and return the raw token ONCE. */
+export async function generateApiToken(): Promise<{ token: string }> {
+  const { id: clientId } = await requireClient();
+  const token = randomBytes(32).toString("base64url");
+  const apiTokenHash = createHash("sha256").update(token).digest("hex");
+  await prisma.settings.upsert({ where: { clientId }, create: { clientId, apiTokenHash }, update: { apiTokenHash } });
+  revalidatePath("/settings");
+  return { token };
+}
+
+export async function revokeApiToken() {
+  const { id: clientId } = await requireClient();
+  await prisma.settings.upsert({ where: { clientId }, create: { clientId, apiTokenHash: null }, update: { apiTokenHash: null } });
+  revalidatePath("/settings");
+}
+
+/** Set which profile the API token answers application questions as. */
+export async function setAnswerProfile(formData: FormData) {
+  const { id: clientId } = await requireClient();
+  const raw = String(formData.get("answerProfileId") ?? "").trim();
+  // Only accept a profile the caller owns; empty clears it.
+  const answerProfileId = raw ? (await prisma.profile.findFirst({ where: { id: raw, clientId }, select: { id: true } }))?.id ?? null : null;
+  await prisma.settings.upsert({ where: { clientId }, create: { clientId, answerProfileId }, update: { answerProfileId } });
   revalidatePath("/settings");
 }
 

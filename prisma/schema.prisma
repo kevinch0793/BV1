@@ -71,6 +71,8 @@ model Settings {
   skillsMaxCategories Int     @default(6)
   skillsMinItems      Int     @default(6)
   skillsMaxItems      Int     @default(9)
+  apiTokenHash       String?  @unique // SHA-256 of the application-answer API token (token itself never stored)
+  answerProfileId    String? // profile the API token answers application questions as
   updatedAt          DateTime @updatedAt
 }
 

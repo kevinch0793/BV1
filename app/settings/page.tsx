@@ -1,9 +1,11 @@
 import { getSettings, TAILORING_MODELS } from "@/lib/settings";
 import { updateSettings, updateTailoringModel, updateSkillsConfig } from "@/app/actions/settings";
 import { requireClient } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import { DirtyForm } from "@/components/DirtyForm";
 import { SectionOrderEditor } from "@/components/SectionOrderEditor";
 import { TemplateSettings } from "@/components/TemplateSettings";
+import { ApiTokenPanel } from "@/components/ApiTokenPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +28,10 @@ const saveBtn =
 export default async function SettingsPage() {
   const { id: clientId } = await requireClient();
   const settings = await getSettings(clientId);
+  const [profiles, answerRow] = await Promise.all([
+    prisma.profile.findMany({ where: { clientId }, orderBy: { createdAt: "asc" }, select: { id: true, fullName: true, label: true } }),
+    prisma.settings.findUnique({ where: { clientId }, select: { apiTokenHash: true, answerProfileId: true } }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -119,6 +125,19 @@ export default async function SettingsPage() {
           />
           <button data-save className={saveBtn}>Save instructions</button>
         </DirtyForm>
+      </section>
+
+      {/* Application-answer browser extension */}
+      <section className="rounded-xl border border-neutral-200 bg-white p-5">
+        <h2 className="text-lg font-semibold text-neutral-900">Application-answer extension</h2>
+        <p className="mb-3 text-xs text-neutral-500">
+          Pick a profile and generate an API token, then use the browser extension to auto-fill the open-ended questions on job-application pages. The token is shown once — paste it into the extension&apos;s options and keep it safe.
+        </p>
+        <ApiTokenPanel
+          profiles={profiles.map((p) => ({ id: p.id, name: p.fullName || p.label }))}
+          hasToken={!!answerRow?.apiTokenHash}
+          answerProfileId={answerRow?.answerProfileId ?? null}
+        />
       </section>
     </div>
   );
