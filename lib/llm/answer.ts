@@ -1,9 +1,8 @@
 // Draft plain-text answers to open-ended job-application questions, grounded in a
-// candidate profile. Structured output (the LLM layer is structured-only), with the
-// same Anthropic/OpenRouter round-robin as tailoring (lib/llm/service.ts).
+// candidate profile. Structured output (the LLM layer is structured-only) on
+// Anthropic (Claude), like tailoring (lib/llm/service.ts).
 import { z } from "zod";
 import { generateStructured, DEFAULT_MODEL as CLAUDE_MODEL } from "@/lib/llm/anthropic";
-import { generateStructuredOpenRouter, hasOpenRouter } from "@/lib/llm/openrouter";
 
 export const AnswerSchema = z.object({
   answers: z.array(
@@ -27,8 +26,6 @@ Rules:
 - If a question isn't supported by the background, answer briefly and honestly instead of fabricating.
 - Return exactly one answer per question, in the same order, echoing each question.`;
 
-let rr = 0;
-
 /** Draft one plain-text answer per question, grounded in `profileText` (+ JD). */
 export async function answerApplicationQuestions(args: {
   profileText: string;
@@ -45,25 +42,6 @@ export async function answerApplicationQuestions(args: {
     .filter(Boolean)
     .join("\n\n");
 
-  const providers: Array<"anthropic" | "openrouter"> = [];
-  if (process.env.ANTHROPIC_API_KEY) providers.push("anthropic");
-  if (hasOpenRouter()) providers.push("openrouter");
-  if (providers.length === 0) providers.push("anthropic"); // surfaces a clear "key not set" error
-
-  const start = rr++ % providers.length;
-  const order = [...providers.slice(start), ...providers.slice(0, start)];
-
-  let lastErr: unknown;
-  for (const p of order) {
-    try {
-      const res =
-        p === "openrouter"
-          ? await generateStructuredOpenRouter({ schema: AnswerSchema, schemaName: "application_answers", system: SYSTEM, prompt, model: CLAUDE_MODEL, maxTokens: 4000 })
-          : await generateStructured({ schema: AnswerSchema, system: SYSTEM, prompt, model: CLAUDE_MODEL, maxTokens: 4000 });
-      return res.answers;
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  throw lastErr;
+  const res = await generateStructured({ schema: AnswerSchema, system: SYSTEM, prompt, model: CLAUDE_MODEL, maxTokens: 4000 });
+  return res.answers;
 }

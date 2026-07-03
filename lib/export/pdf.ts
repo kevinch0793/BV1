@@ -133,7 +133,11 @@ export async function renderPageText(url: string): Promise<string | null> {
       if (t === "image" || t === "media" || t === "font") req.abort().catch(() => {});
       else req.continue().catch(() => {});
     });
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 25000 });
+    // domcontentloaded is fast and (unlike networkidle2) won't hang for the full
+    // timeout on pages with long-lived connections; then wait briefly for the
+    // client-rendered JD to populate. Worst case ~18s vs the old 25s+.
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 12000 });
+    await page.waitForFunction(() => (document.body?.innerText || "").length > 600, { timeout: 6000 }).catch(() => {});
     const text: string = await page.evaluate(() => {
       const tidy = (s: string) => (s || "").replace(/[ \t]+/g, " ").replace(/\n\s*\n\s*\n+/g, "\n\n").trim();
       for (const el of Array.from(document.querySelectorAll('script[type="application/ld+json"]'))) {

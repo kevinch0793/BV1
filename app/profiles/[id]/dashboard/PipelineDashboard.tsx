@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addJobUrls, setJobFromText, deleteJob, setApplyStatus, type ApplyStatus } from "@/app/actions/jobs";
-import { startPipeline, pipelineRunning, ensurePipelineRunning, retryJob } from "@/app/actions/pipeline";
+import { startPipeline, jobStatuses, ensurePipelineRunning, retryJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResumeNative } from "@/lib/exportClient";
 import { saveResumeToDownloads } from "@/app/actions/export";
@@ -86,6 +86,9 @@ export function PipelineDashboard({
 }) {
   const router = useRouter();
   const [polling, setPolling] = useState(false);
+  // Live per-job status from the cheap poll (id → status/tailoredId), overlaid on
+  // the server-rendered rows so badges flow fetching → tailoring → done in ~real time.
+  const [live, setLive] = useState<Map<string, { status: string; tailoredId: string | null }>>(new Map());
   const [adding, startAdd] = useTransition();
   const [addMsg, setAddMsg] = useState<string | null>(null);
 
@@ -107,24 +110,30 @@ export function PipelineDashboard({
     });
   }, [profileId]);
 
-  // Poll the (cheap) running-check every 5s, but refetch the whole table — the
-  // heavy part over a tunnel (lots of bandwidth) — only every ~15s, plus once
-  // more the moment the run finishes. Keeps progress fresh without burning data.
+  // Poll a CHEAP per-job status snapshot every 2.5s and update the badges live, so
+  // progress flows one-by-one. The full table (company/role/ATS — heavy over a
+  // tunnel) is refetched only every ~10s and once when the run finishes.
   useEffect(() => {
     if (!polling) return;
     let active = true;
     let ticks = 0;
     const id = setInterval(async () => {
-      const still = await pipelineRunning(profileId);
+      let data: Awaited<ReturnType<typeof jobStatuses>>;
+      try {
+        data = await jobStatuses(profileId);
+      } catch {
+        return;
+      }
       if (!active) return;
+      setLive(new Map(data.jobs.map((j) => [j.id, { status: j.status, tailoredId: j.tailoredId }])));
       ticks += 1;
-      if (!still) {
+      if (!data.running) {
         setPolling(false);
         router.refresh();
-      } else if (ticks % 3 === 0) {
-        router.refresh();
+        return;
       }
-    }, 5000);
+      if (ticks % 4 === 0) router.refresh();
+    }, 2500);
     return () => {
       active = false;
       clearInterval(id);
@@ -211,16 +220,21 @@ export function PipelineDashboard({
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
-                {sortedJobs.map((j) => (
-                  <JobRow
-                    key={j.id}
-                    job={j}
-                    onRemove={(id) => deleteJob(id, profileId).then(() => router.refresh())}
-                    onRetry={(id) => retryJob(id).then(kick)}
-                    onPasted={kick}
-                    onRefresh={() => router.refresh()}
-                  />
-                ))}
+                {sortedJobs.map((j) => {
+                  // Overlay the live status (fresher than the ~10s table refetch).
+                  const o = live.get(j.id);
+                  const jm = o ? { ...j, status: o.status, tailoredId: o.tailoredId } : j;
+                  return (
+                    <JobRow
+                      key={j.id}
+                      job={jm}
+                      onRemove={(id) => deleteJob(id, profileId).then(() => router.refresh())}
+                      onRetry={(id) => retryJob(id).then(kick)}
+                      onPasted={kick}
+                      onRefresh={() => router.refresh()}
+                    />
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -299,7 +299,7 @@ function siblingUrls(url: string): string[] {
  *  3. Sibling URLs (e.g. strip /application) and the best same-site links, one hop.
  *  4. Landing body text as a last resort.
  */
-export async function findJobDescription(url: string): Promise<FetchResult> {
+export async function findJobDescription(url: string, opts: { render?: boolean } = {}): Promise<FetchResult> {
   // Site-specific handlers first (JS-only / bot-blocked boards with a public API).
   for (const handler of [tryGreenhouse, tryAdpWorkforceNow]) {
     const text = await handler(url);
@@ -337,9 +337,12 @@ export async function findJobDescription(url: string): Promise<FetchResult> {
 
   // JS-rendered boards (e.g. Zoho Recruit) build the JD client-side, so it never
   // appears in the static HTML. Render the page with headless Chrome and read the
-  // JD back. Done after the cheap paths so most jobs never pay for it.
-  const rendered = await renderPageText(url).catch(() => null);
-  if (rendered && (looksLikeJD(rendered) || rendered.length >= 600)) return { ok: true, text: rendered, sourceUrl: url };
+  // JD back. This is slow (headless Chrome), so batch fetches opt out
+  // (`render: false`) and it runs only on a manual retry — most jobs never pay it.
+  if (opts.render !== false) {
+    const rendered = await renderPageText(url).catch(() => null);
+    if (rendered && (looksLikeJD(rendered) || rendered.length >= 600)) return { ok: true, text: rendered, sourceUrl: url };
+  }
 
   // Last resort: accept a reasonably-sized page. A tiny page (~200 chars) is a
   // stub/login/JS shell, not a JD — fail it so the user pastes the text.

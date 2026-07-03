@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
 import { requireClient } from "@/lib/auth";
 import { assertOwnsProfile, assertOwnsJob } from "@/lib/owner";
-import { startPipeline as start, isPipelineRunning } from "@/lib/pipeline";
+import { startPipeline as start, isPipelineRunning, markRenderRetry } from "@/lib/pipeline";
 
 /**
  * Start the background fetch+tailor pipeline. Template/model/instructions come
@@ -23,6 +23,26 @@ export async function startPipeline(profileId: string): Promise<{ ok: true }> {
 export async function pipelineRunning(profileId: string): Promise<boolean> {
   await requireClient();
   return isPipelineRunning(profileId);
+}
+
+/**
+ * Cheap per-job status snapshot for live progress (id + status + whether it has a
+ * tailored resume). Much lighter than a full page refetch, so the dashboard can
+ * poll it every couple seconds and show fetching → tailoring → done as it flows.
+ */
+export async function jobStatuses(
+  profileId: string,
+): Promise<{ running: boolean; jobs: { id: string; status: string; tailoredId: string | null }[] }> {
+  await assertOwnsProfile(profileId);
+  const jobs = await prisma.jobPosting.findMany({
+    where: { profileId },
+    select: { id: true, status: true, tailored: { select: { id: true }, orderBy: { createdAt: "desc" }, take: 1 } },
+    orderBy: { createdAt: "asc" },
+  });
+  return {
+    running: isPipelineRunning(profileId),
+    jobs: jobs.map((j) => ({ id: j.id, status: j.status, tailoredId: j.tailored[0]?.id ?? null })),
+  };
 }
 
 /**
@@ -56,6 +76,9 @@ export async function ensurePipelineRunning(profileId: string): Promise<{ runnin
 /** Re-queue a failed job for another fetch+tailor pass. */
 export async function retryJob(jobId: string): Promise<void> {
   const clientId = await assertOwnsJob(jobId);
+  // A manual retry may be for a JS-only page, so let this one job's next fetch use
+  // the (slow) headless-Chrome render fallback that batch runs skip.
+  markRenderRetry(jobId);
   await prisma.jobPosting.updateMany({
     where: { id: jobId, profile: { clientId } },
     data: { status: "pending", error: null },

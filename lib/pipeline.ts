@@ -46,12 +46,31 @@ export async function startPipeline(profileId: string, opts: PipelineOpts): Prom
   void loop(profileId).finally(() => running.delete(profileId));
 }
 
-// Max jobs processed at once. Each runs its full fetch→tailor chain in parallel.
-// Tailoring is the rate-limited stage; when both Anthropic and OpenRouter keys
-// are set, tailor calls are load-balanced across the two pools, so we can run
-// more in parallel. Override with PIPELINE_CONCURRENCY.
-const TWO_TAILOR_POOLS = !!process.env.ANTHROPIC_API_KEY && !!process.env.OPENROUTER_API_KEY;
-const CONCURRENCY = Math.max(1, Number(process.env.PIPELINE_CONCURRENCY) || (TWO_TAILOR_POOLS ? 12 : 7));
+// GLOBAL cap on jobs processed at once — shared across ALL profiles, so submitting
+// a batch to several profiles no longer multiplies the load (it used to be per
+// profile: 3 profiles × 12 = 36 in flight, which saturated the LLM account and
+// caused rate-limit timeouts). Tailoring on Anthropic is the rate-limited stage.
+// Override with PIPELINE_CONCURRENCY.
+const GLOBAL_CONCURRENCY = Math.max(1, Number(process.env.PIPELINE_CONCURRENCY) || 6);
+let activeJobs = 0;
+const jobWaiters: (() => void)[] = [];
+async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (activeJobs >= GLOBAL_CONCURRENCY) await new Promise<void>((resolve) => jobWaiters.push(resolve));
+  activeJobs++;
+  try {
+    return await fn();
+  } finally {
+    activeJobs--;
+    jobWaiters.shift()?.();
+  }
+}
+
+// Jobs whose NEXT fetch should try the (slow) headless-Chrome render — set only on
+// a manual retry, so batch runs stay fast and un-fetchable JS pages fail quickly.
+const renderHints = new Set<string>();
+export function markRenderRetry(jobId: string): void {
+  renderHints.add(jobId);
+}
 
 async function loop(profileId: string): Promise<void> {
   const profile = await prisma.profile.findUnique({
@@ -69,23 +88,10 @@ async function loop(profileId: string): Promise<void> {
       : { profileId, status: "pending" };
     const jobs = await prisma.jobPosting.findMany({ where, select: { id: true }, orderBy: { createdAt: "asc" } });
     if (jobs.length === 0) break;
-    await runBounded(
-      jobs.map((j) => () => processJob(profileId, j.id, canTailor)),
-      CONCURRENCY,
-    );
+    // Every job goes through the shared global slot, so all profiles' loops
+    // together never exceed GLOBAL_CONCURRENCY.
+    await Promise.all(jobs.map((j) => withSlot(() => processJob(profileId, j.id, canTailor))));
   }
-}
-
-/** Run thunks with at most `limit` in flight at once. */
-async function runBounded(thunks: (() => Promise<void>)[], limit: number): Promise<void> {
-  let next = 0;
-  async function worker(): Promise<void> {
-    while (next < thunks.length) {
-      const idx = next++;
-      await thunks[idx]();
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, thunks.length) }, worker));
 }
 
 /** One job's full chain: fetch (if needed) then tailor (if possible). */
@@ -109,7 +115,10 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
   }
   await prisma.jobPosting.update({ where: { id: jobId }, data: { status: "fetching" } });
   const ts = Date.now();
-  const fetched = await findJobDescription(job.url);
+  // Only attempt the slow headless-Chrome render fallback when this job was just
+  // retried (`renderHints`); batch fetches skip it so they stay fast.
+  const render = renderHints.delete(jobId);
+  const fetched = await findJobDescription(job.url, { render });
   const scrapeMs = Date.now() - ts;
   if (!fetched.ok) {
     await prisma.jobPosting.update({ where: { id: jobId }, data: { status: "failed", error: fetched.error } });

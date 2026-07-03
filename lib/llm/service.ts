@@ -1,6 +1,5 @@
 import { generateStructuredOpenAI } from "@/lib/llm/openai";
 import { generateStructured, DEFAULT_MODEL as CLAUDE_TAILOR_MODEL } from "@/lib/llm/anthropic";
-import { generateStructuredOpenRouter, hasOpenRouter } from "@/lib/llm/openrouter";
 import { generateStructuredExtract } from "@/lib/llm/balance";
 import { deepStripDashes, dedupeExperienceProjects } from "@/lib/sanitize";
 import {
@@ -109,46 +108,15 @@ export async function tailorResume(args: {
   return dedupeExperienceProjects(deepStripDashes(content));
 }
 
-// Round-robin tailoring across the direct Anthropic account and OpenRouter (same
-// Claude model, separate rate-limit pools), so the per-minute output-token
-// budgets add together → higher sustained throughput. Falls back to the other
-// provider on error. A tailored resume is ~1.2-2k output tokens (measured); the
-// 4000 cap stays tight so each provider's per-minute budget fits many calls.
-let rrCounter = 0;
+// Tailoring runs on Anthropic (Claude). A tailored resume is ~1.2-2k output
+// tokens (measured); the 4000 cap stays tight so many calls fit the per-minute
+// budget. The Anthropic SDK retries transient 429s (maxRetries in anthropic.ts).
 async function tailorViaProvider(system: string, prompt: string, model?: string): Promise<ResumeContent> {
-  const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
-  const providers: Array<"anthropic" | "openrouter"> = [];
-  if (hasAnthropic) providers.push("anthropic");
-  if (hasOpenRouter()) providers.push("openrouter");
-  if (providers.length === 0) providers.push("anthropic"); // surfaces a clear "key not set" error
-
-  // Alternate which provider goes first; on failure, try the remaining one(s).
-  const start = rrCounter++ % providers.length;
-  const order = [...providers.slice(start), ...providers.slice(0, start)];
-
-  let lastErr: unknown;
-  for (const p of order) {
-    try {
-      if (p === "openrouter") {
-        return await generateStructuredOpenRouter({
-          schema: ResumeContentSchema,
-          schemaName: "resume_content",
-          system,
-          prompt,
-          model,
-          maxTokens: 4000,
-        });
-      }
-      return await generateStructured({
-        schema: ResumeContentSchema,
-        system,
-        prompt,
-        model: model ?? CLAUDE_TAILOR_MODEL,
-        maxTokens: 4000,
-      });
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  throw lastErr;
+  return generateStructured({
+    schema: ResumeContentSchema,
+    system,
+    prompt,
+    model: model ?? CLAUDE_TAILOR_MODEL,
+    maxTokens: 4000,
+  });
 }
