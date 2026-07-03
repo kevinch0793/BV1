@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addJobUrls, setJobFromText, deleteJob, setApplyStatus, type ApplyStatus } from "@/app/actions/jobs";
-import { startPipeline, jobStatuses, ensurePipelineRunning, retryJob } from "@/app/actions/pipeline";
+import { startPipeline, jobStatuses, ensurePipelineRunning, retryJob, type LiveJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResumeNative } from "@/lib/exportClient";
 import { saveResumeToDownloads } from "@/app/actions/export";
@@ -86,9 +86,12 @@ export function PipelineDashboard({
 }) {
   const router = useRouter();
   const [polling, setPolling] = useState(false);
-  // Live per-job status from the cheap poll (id → status/tailoredId), overlaid on
-  // the server-rendered rows so badges flow fetching → tailoring → done in ~real time.
-  const [live, setLive] = useState<Map<string, { status: string; tailoredId: string | null }>>(new Map());
+  // Live per-job fields from the cheap poll, overlaid on the server-rendered rows
+  // so status + company/role/location update in ~real time (fetching → tailoring → done).
+  const [live, setLive] = useState<Map<string, LiveJob>>(new Map());
+  // Latest displayed job ids, read by the poll without re-subscribing the interval.
+  const jobIdsRef = useRef<string[]>([]);
+  jobIdsRef.current = jobs.map((j) => j.id);
   const [adding, startAdd] = useTransition();
   const [addMsg, setAddMsg] = useState<string | null>(null);
 
@@ -120,12 +123,12 @@ export function PipelineDashboard({
     const id = setInterval(async () => {
       let data: Awaited<ReturnType<typeof jobStatuses>>;
       try {
-        data = await jobStatuses(profileId);
+        data = await jobStatuses(profileId, jobIdsRef.current);
       } catch {
         return;
       }
       if (!active) return;
-      setLive(new Map(data.jobs.map((j) => [j.id, { status: j.status, tailoredId: j.tailoredId }])));
+      setLive(new Map(data.jobs.map((j) => [j.id, j])));
       ticks += 1;
       if (!data.running) {
         setPolling(false);
@@ -221,9 +224,9 @@ export function PipelineDashboard({
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {sortedJobs.map((j) => {
-                  // Overlay the live status (fresher than the ~10s table refetch).
+                  // Overlay the live fields (fresher than the ~10s table refetch).
                   const o = live.get(j.id);
-                  const jm = o ? { ...j, status: o.status, tailoredId: o.tailoredId } : j;
+                  const jm = o ? { ...j, ...o } : j;
                   return (
                     <JobRow
                       key={j.id}

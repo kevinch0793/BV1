@@ -25,23 +25,56 @@ export async function pipelineRunning(profileId: string): Promise<boolean> {
   return isPipelineRunning(profileId);
 }
 
+export type LiveJob = {
+  id: string;
+  status: string;
+  company: string | null;
+  role: string | null;
+  location: string | null;
+  workplace: string | null;
+  error: string | null;
+  tailoredId: string | null;
+  fitAfter: number | null;
+};
+
 /**
- * Cheap per-job status snapshot for live progress (id + status + whether it has a
- * tailored resume). Much lighter than a full page refetch, so the dashboard can
- * poll it every couple seconds and show fetching → tailoring → done as it flows.
+ * Cheap per-job snapshot for live progress — scoped to the rows the dashboard is
+ * showing (`jobIds`), so the query stays small (avoids the libSQL IN-parameter
+ * limit) and light over a tunnel. Carries the fetched fields + tailored info so a
+ * job shows its company/role/location the moment it's fetched and flips through
+ * fetching → tailoring → done. Two scalar queries joined in memory (no relation
+ * load, so no P2029).
  */
-export async function jobStatuses(
-  profileId: string,
-): Promise<{ running: boolean; jobs: { id: string; status: string; tailoredId: string | null }[] }> {
+export async function jobStatuses(profileId: string, jobIds: string[]): Promise<{ running: boolean; jobs: LiveJob[] }> {
   await assertOwnsProfile(profileId);
-  const jobs = await prisma.jobPosting.findMany({
-    where: { profileId },
-    select: { id: true, status: true, tailored: { select: { id: true }, orderBy: { createdAt: "desc" }, take: 1 } },
-    orderBy: { createdAt: "asc" },
-  });
+  const ids = (jobIds ?? []).slice(0, 400);
+  if (ids.length === 0) return { running: isPipelineRunning(profileId), jobs: [] };
+  const [jobs, tailored] = await Promise.all([
+    prisma.jobPosting.findMany({
+      where: { profileId, id: { in: ids } },
+      select: { id: true, status: true, company: true, role: true, location: true, workplace: true, error: true },
+    }),
+    prisma.tailoredResume.findMany({
+      where: { profileId, jobPostingId: { in: ids } },
+      select: { id: true, jobPostingId: true, fitAfter: true },
+    }),
+  ]);
+  const tmap = new Map(
+    tailored.filter((t) => t.jobPostingId).map((t) => [t.jobPostingId as string, { id: t.id, fitAfter: t.fitAfter }]),
+  );
   return {
     running: isPipelineRunning(profileId),
-    jobs: jobs.map((j) => ({ id: j.id, status: j.status, tailoredId: j.tailored[0]?.id ?? null })),
+    jobs: jobs.map((j) => ({
+      id: j.id,
+      status: j.status,
+      company: j.company,
+      role: j.role,
+      location: j.location,
+      workplace: j.workplace,
+      error: j.error,
+      tailoredId: tmap.get(j.id)?.id ?? null,
+      fitAfter: tmap.get(j.id)?.fitAfter ?? null,
+    })),
   };
 }
 

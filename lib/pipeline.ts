@@ -89,8 +89,15 @@ async function loop(profileId: string): Promise<void> {
     const jobs = await prisma.jobPosting.findMany({ where, select: { id: true }, orderBy: { createdAt: "asc" } });
     if (jobs.length === 0) break;
     // Every job goes through the shared global slot, so all profiles' loops
-    // together never exceed GLOBAL_CONCURRENCY.
-    await Promise.all(jobs.map((j) => withSlot(() => processJob(profileId, j.id, canTailor))));
+    // together never exceed GLOBAL_CONCURRENCY. A per-job error (e.g. the row was
+    // deleted mid-flight → P2025) is swallowed so it never crashes the loop.
+    await Promise.all(
+      jobs.map((j) =>
+        withSlot(() => processJob(profileId, j.id, canTailor)).catch((e) => {
+          console.error(`[pipeline] job ${j.id} failed:`, e instanceof Error ? e.message : e);
+        }),
+      ),
+    );
   }
 }
 
@@ -143,18 +150,11 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
       return false;
     }
 
-    // Extract the ATS keyword list now and store it, so the tailor can be handed
-    // the exact list it will be graded on (see tailorJobNow).
-    const jobForSkills: JobForLLM = {
-      company: fields.company,
-      role: fields.role,
-      location: fields.location,
-      description: fields.description,
-      requirements: fields.requirements,
-    };
-    const atsSkills = await extractJdSkills(jobForSkills).catch(() => null);
-    if (process.env.LLM_DEBUG) console.log(`[pipeline] fetch job ${jobId} scrape=${scrapeMs}ms extract+skills=${Date.now() - te}ms`);
+    if (process.env.LLM_DEBUG) console.log(`[pipeline] fetch job ${jobId} scrape=${scrapeMs}ms extract=${Date.now() - te}ms`);
 
+    // Show the fetched fields ASAP and move on to tailoring. The ATS keyword list
+    // is extracted lazily by the tailor (tailorJobNow handles a null atsSkills),
+    // so it stays off the fetch critical path.
     await prisma.jobPosting.update({
       where: { id: jobId },
       data: {
@@ -163,7 +163,7 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
         location: fields.location,
         workplace: fields.workplace,
         descriptionRaw: fetched.text.slice(0, 20000),
-        descriptionParsed: { description: fields.description, requirements: fields.requirements, atsSkills },
+        descriptionParsed: { description: fields.description, requirements: fields.requirements, atsSkills: null },
         status: "fetched",
         error: null,
       },
