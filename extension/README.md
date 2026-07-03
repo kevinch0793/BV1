@@ -18,11 +18,19 @@ the answers from the profile you chose in **Settings → Application-answer exte
    - **API token** — the token from step 1
    Click **Save**.
 
+## Status indicator
+A small **"Answer"** button sits fixed in the bottom-right of every page:
+- **Green "Answer"** = active (app URL + token are set).
+- **Grey "Answer · set up"** = inactive; click it to open the options and configure.
+The toolbar icon also shows a **"!"** badge until it's configured.
+
 ## Everyday use
 1. Open a job's application page (the form with the questions).
-2. Click the extension's toolbar icon.
-3. The open-ended fields fill with drafts; a corner toast reports how many.
+2. Click the fixed **"Answer"** button in the bottom-right of the page.
+3. The open-ended fields fill with drafts; the button reports how many (e.g. "Filled 3 ✓").
 4. **Read and edit every answer before you submit** — it drafts, you're the check.
+
+(Clicking the toolbar icon still works as a fallback.)
 
 ## Notes & limits
 - Works best on standard ATS (Greenhouse, Lever, Ashby). Heavily-scripted or deeply
