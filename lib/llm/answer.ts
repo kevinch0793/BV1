@@ -1,7 +1,9 @@
 // Draft plain-text answers to open-ended job-application questions, grounded in a
-// candidate profile. Structured output (the LLM layer is structured-only) on
-// Anthropic (Claude), like tailoring (lib/llm/service.ts).
+// candidate profile. Runs on OpenAI — a DIFFERENT rate pool from the Anthropic
+// tailoring pipeline — so an interactive answer isn't throttled while a batch is
+// tailoring; falls back to Claude if OpenAI errors.
 import { z } from "zod";
+import { generateStructuredOpenAI, OPENAI_TAILOR_MODEL } from "@/lib/llm/openai";
 import { generateStructured, DEFAULT_MODEL as CLAUDE_MODEL } from "@/lib/llm/anthropic";
 
 export const AnswerSchema = z.object({
@@ -42,6 +44,12 @@ export async function answerApplicationQuestions(args: {
     .filter(Boolean)
     .join("\n\n");
 
-  const res = await generateStructured({ schema: AnswerSchema, system: SYSTEM, prompt, model: CLAUDE_MODEL, maxTokens: 4000 });
-  return res.answers;
+  try {
+    const res = await generateStructuredOpenAI({ schema: AnswerSchema, schemaName: "application_answers", system: SYSTEM, prompt, model: OPENAI_TAILOR_MODEL, maxTokens: 4000 });
+    return res.answers;
+  } catch {
+    // OpenAI errored (e.g. throttled/misconfigured) — fall back to Claude.
+    const res = await generateStructured({ schema: AnswerSchema, system: SYSTEM, prompt, model: CLAUDE_MODEL, maxTokens: 4000 });
+    return res.answers;
+  }
 }

@@ -99,11 +99,23 @@ async function run(tabId) {
   const jobText = frames.map((f) => f.jobText).sort((a, b) => (b?.length || 0) - (a?.length || 0))[0] || "";
   const jobUrl = frames[0]?.jobUrl || "";
 
-  const res = await fetch(`${appUrl}/api/answer`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ questions: fields.map((f) => f.question), jobUrl, jobText }),
-  });
+  // Bound the request so a busy/slow server never leaves the button stuck on
+  // "Answering…" — abort after 60s with a clear message.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 60000);
+  let res;
+  try {
+    res = await fetch(`${appUrl}/api/answer`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ questions: fields.map((f) => f.question), jobUrl, jobText }),
+      signal: ctrl.signal,
+    });
+  } catch (e) {
+    throw new Error(ctrl.signal.aborted ? "Timed out — server busy, try again." : e && e.message ? e.message : "network error");
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
     const t = await res.text().catch(() => "");
     throw new Error(`${res.status} ${t.slice(0, 200)}`);
