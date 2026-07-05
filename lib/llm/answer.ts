@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { generateStructuredOpenAI, OPENAI_TAILOR_MODEL } from "@/lib/llm/openai";
 import { generateStructured, DEFAULT_MODEL as CLAUDE_MODEL } from "@/lib/llm/anthropic";
+import { toPlainKeyboard } from "@/lib/sanitize";
 
 export const AnswerSchema = z.object({
   answers: z.array(
@@ -22,8 +23,9 @@ const SYSTEM = `You help a job seeker answer the OPEN-ENDED (free-text) question
 Rules:
 - Ground every answer ONLY in the candidate's provided background (resume + profile). NEVER invent employers, titles, dates, degrees, metrics, or experience they don't have.
 - Write in the first person ("I"). PLAIN TEXT ONLY — no markdown, no bullet points, no headings; the text goes straight into a form field.
-- SHORT and SIMPLE: usually 2-3 sentences (about 30-60 words); a single sentence for a simple question. Go longer ONLY if the question explicitly asks for detail.
+- LENGTH follows the tag before each question: [ONE LINE] → answer in ONE sentence only (or a short phrase), simple and explicit — never a second sentence; [PARAGRAPH] → 2-3 sentences (about 30-60 words). Only exceed the tag if the question explicitly demands more detail.
 - EXPLICIT and DIRECT: lead with the actual answer, be concrete and specific, use plain everyday words. No filler, no throat-clearing, no hedging, no fancy vocabulary.
+- PLAIN KEYBOARD CHARACTERS ONLY: use a hyphen (-), never en/em dashes; straight quotes (' and ") never curly ones; three dots (...) never an ellipsis character.
 - Use the job description (when provided) to make "why this role / why this company / what interests you" answers specific and relevant.
 - If a question isn't supported by the background, answer briefly and honestly instead of fabricating.
 - Return exactly one answer per question, in the same order, echoing each question.`;
@@ -32,24 +34,27 @@ Rules:
 export async function answerApplicationQuestions(args: {
   profileText: string;
   jobText?: string;
-  questions: string[];
+  questions: { question: string; short: boolean }[];
   customInstructions?: string;
 }): Promise<{ question: string; answer: string }[]> {
   const prompt = [
     `# Candidate background\n${args.profileText}`,
     args.jobText ? `# Job description\n${args.jobText}` : "",
     args.customInstructions ? `# Extra style guidance (tone)\n${args.customInstructions}` : "",
-    `# Application questions (answer each in plain text)\n${args.questions.map((q, i) => `${i + 1}. ${q}`).join("\n")}`,
+    `# Application questions (answer each in plain text)\n${args.questions
+      .map((q, i) => `${i + 1}. ${q.short ? "[ONE LINE]" : "[PARAGRAPH]"} ${q.question}`)
+      .join("\n")}`,
   ]
     .filter(Boolean)
     .join("\n\n");
 
+  let answers: { question: string; answer: string }[];
   try {
-    const res = await generateStructuredOpenAI({ schema: AnswerSchema, schemaName: "application_answers", system: SYSTEM, prompt, model: OPENAI_TAILOR_MODEL, maxTokens: 4000 });
-    return res.answers;
+    answers = (await generateStructuredOpenAI({ schema: AnswerSchema, schemaName: "application_answers", system: SYSTEM, prompt, model: OPENAI_TAILOR_MODEL, maxTokens: 4000 })).answers;
   } catch {
     // OpenAI errored (e.g. throttled/misconfigured) — fall back to Claude.
-    const res = await generateStructured({ schema: AnswerSchema, system: SYSTEM, prompt, model: CLAUDE_MODEL, maxTokens: 4000 });
-    return res.answers;
+    answers = (await generateStructured({ schema: AnswerSchema, system: SYSTEM, prompt, model: CLAUDE_MODEL, maxTokens: 4000 })).answers;
   }
+  // Guarantee plain keyboard characters (no em dashes, curly quotes, ellipsis, …).
+  return answers.map((a) => ({ question: a.question, answer: toPlainKeyboard(a.answer) }));
 }

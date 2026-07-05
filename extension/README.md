@@ -1,8 +1,11 @@
 # Application Answer Filler (Chrome extension)
 
 Auto-drafts the **open-ended** (free-text) questions on a job-application page from
-one of your resume profiles, and fills them into the form. Checkboxes, radios,
-dropdowns, and short one-line inputs are ignored — only textareas / rich-text boxes.
+one of your resume profiles, and fills them into the form. It fills text areas
+(paragraph answers) and single-line text inputs whose label reads like an
+open-ended question ("Why us?", "Describe...") with a short one-line answer.
+Checkboxes, radios, dropdowns, and data fields (name/email/phone/URL) are ignored.
+All answers use plain keyboard characters only (no em dashes or curly quotes).
 
 It's the "hands"; the app is the "brain" (the `POST /api/answer` endpoint drafts
 the answers from the profile you chose in **Settings → Application-answer extension**).

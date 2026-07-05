@@ -11,6 +11,25 @@ export function stripDashes(s: string): string {
   return s.replace(FANCY_DASHES, "-");
 }
 
+// Other typographic characters an LLM emits that aren't on a physical keyboard:
+// curly quotes, ellipsis, non-breaking / odd-width spaces, bullets. Normalize each
+// to its plain-keyboard equivalent (dashes are handled by stripDashes).
+const CURLY_SINGLE = /[‘’‚‛′]/g;
+const CURLY_DOUBLE = /[“”„‟″]/g;
+const ELLIPSIS = /…/g;
+const ODD_SPACES = /[         　]/g;
+const BULLETS = /[•‣◦⁃∙]/g;
+
+/** Force text to plain keyboard characters: hyphen, straight quotes, "...", spaces. */
+export function toPlainKeyboard(s: string): string {
+  return stripDashes(s)
+    .replace(CURLY_SINGLE, "'")
+    .replace(CURLY_DOUBLE, '"')
+    .replace(ELLIPSIS, "...")
+    .replace(ODD_SPACES, " ")
+    .replace(BULLETS, "-");
+}
+
 /** Deep-clone a value, replacing fancy dashes in every string it contains. */
 export function deepStripDashes<T>(value: T): T {
   if (typeof value === "string") return stripDashes(value) as unknown as T;

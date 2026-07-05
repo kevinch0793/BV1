@@ -37,14 +37,30 @@ function scrape() {
     return "";
   };
 
-  const els = Array.from(document.querySelectorAll("textarea, [contenteditable='true']")).filter(visible);
+  // A single-line <input> is only an open-ended QUESTION (vs a name/email/phone
+  // data field) if its label reads like one.
+  const isQuestion = (q) =>
+    /\?\s*$/.test(q) ||
+    /^(why|what|how|when|where|who|which|describe|explain|tell|share|list|do you|did you|have you|has your|are you|were you|would you|could you|can you|will you|is there|please\s+(describe|explain|tell|share|list))\b/i.test(q);
+  const TEXT_INPUT = new Set(["", "text", "search"]);
+
+  const els = Array.from(document.querySelectorAll("textarea, input, [contenteditable='true']")).filter(visible);
   const fields = [];
   for (const el of els) {
+    let short;
+    if (el.tagName.toLowerCase() === "input") {
+      const type = (el.getAttribute("type") || "").toLowerCase();
+      if (!TEXT_INPUT.has(type)) continue; // skip checkbox/radio/email/tel/number/file/date/...
+      short = true; // single-line input → one-line answer
+    } else {
+      short = false; // textarea / contenteditable → paragraph
+    }
     const q = labelFor(el);
     if (!q) continue;
+    if (short && !isQuestion(q)) continue; // don't fill name/email/URL data fields
     const id = "aiq-" + Math.random().toString(36).slice(2, 11);
     el.setAttribute("data-aiqid", id);
-    fields.push({ id, question: q.replace(/\s+/g, " ").slice(0, 2000) });
+    fields.push({ id, question: q.replace(/\s+/g, " ").slice(0, 2000), short });
   }
   return { jobUrl: location.href, jobText: (document.body?.innerText || "").slice(0, 8000), fields };
 }
@@ -108,7 +124,7 @@ async function run(tabId) {
     res = await fetch(`${appUrl}/api/answer`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ questions: fields.map((f) => f.question), jobUrl, jobText }),
+      body: JSON.stringify({ questions: fields.map((f) => ({ question: f.question, short: f.short })), jobUrl, jobText }),
       signal: ctrl.signal,
     });
   } catch (e) {

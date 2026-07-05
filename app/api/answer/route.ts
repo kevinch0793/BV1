@@ -47,11 +47,16 @@ export async function POST(req: Request) {
   } catch {
     return json({ error: "Invalid JSON body." }, 400);
   }
+  // Each item is { question, short } (short = single-line input); a bare string is
+  // also accepted (treated as a paragraph answer) for backward compatibility.
   const questions = (Array.isArray(body.questions) ? body.questions : [])
-    .map((q) => String(q ?? "").trim())
-    .filter(Boolean)
-    .slice(0, 20)
-    .map((q) => q.slice(0, 2000));
+    .map((item) => {
+      const q = (typeof item === "string" ? item : String((item as { question?: unknown })?.question ?? "")).trim().slice(0, 2000);
+      const short = typeof item === "object" && item != null ? !!(item as { short?: unknown }).short : false;
+      return { question: q, short };
+    })
+    .filter((x) => x.question)
+    .slice(0, 20);
   if (!questions.length) return json({ error: "No questions provided." }, 400);
   const jobText = typeof body.jobText === "string" ? body.jobText.slice(0, 8000) : undefined;
 
