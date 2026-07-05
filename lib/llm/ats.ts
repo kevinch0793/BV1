@@ -55,7 +55,7 @@ export function profileToText(p: ProfileForLLM): string {
   for (const e of p.experiences) {
     parts.push(`${e.role} ${e.company}`);
     for (const g of e.projects ?? []) {
-      parts.push(`${g.name} ${g.type}`);
+      parts.push(`${g.name} ${g.type}${g.domain ? " - " + g.domain : ""}`);
       parts.push(...g.bullets);
     }
   }
@@ -202,6 +202,19 @@ const SYNONYM_GROUPS: string[][] = [
   ["rest", "restful", "rest api", "rest apis"],
   ["large language models", "llm", "llms"],
   ["object oriented", "oop", "object-oriented"],
+  // AI/ML terminology — equivalent phrasings a resume and a JD may each use.
+  ["retrieval augmented generation", "rag", "retrieval-augmented generation"],
+  ["fine-tuning", "fine tuning", "finetuning", "fine-tune"],
+  ["generative ai", "genai", "gen ai"],
+  ["vector database", "vector db", "vectordb", "vector store"],
+  ["semantic search", "vector search", "neural search"],
+  ["hugging face", "huggingface"],
+  ["deep learning", "dl"],
+  ["reinforcement learning", "rl"],
+  ["mlops", "ml ops", "machine learning operations"],
+  ["prompt engineering", "prompting"],
+  ["transformers", "transformer"],
+  ["embeddings", "embedding"],
 ];
 const SYN = new Map<string, string[]>();
 for (const g of SYNONYM_GROUPS) {
@@ -240,6 +253,28 @@ const CONCEPT_IMPLICATIONS: Record<string, string[]> = {
   nosql: ["mongodb", "dynamodb", "cassandra", "couchbase", "redis"],
   cloud: ["aws", "gcp", "azure", "amazon web services", "google cloud"],
   "version control": ["git", "github", "gitlab", "bitbucket"],
+  // AI/ML: a JD concept is covered when the resume names a tool/framework that
+  // demonstrates it, even if the exact phrase never appears.
+  rag: ["langchain", "llamaindex", "llama index", "pinecone", "weaviate", "faiss", "chroma", "milvus", "qdrant", "embeddings"],
+  "retrieval augmented generation": ["langchain", "llamaindex", "pinecone", "weaviate", "faiss", "chroma", "embeddings"],
+  "fine-tuning": ["pytorch", "tensorflow", "hugging face", "huggingface", "transformers", "lora", "peft", "keras"],
+  "fine tuning": ["pytorch", "tensorflow", "hugging face", "huggingface", "transformers", "lora", "peft"],
+  mlops: ["mlflow", "kubeflow", "wandb", "weights and biases", "sagemaker", "vertex ai", "airflow"],
+  llm: ["gpt", "gpt-4", "claude", "llama", "openai", "anthropic", "transformers", "hugging face", "langchain"],
+  "large language models": ["gpt", "claude", "llama", "openai", "anthropic", "transformers", "hugging face", "langchain"],
+  "generative ai": ["gpt", "llm", "stable diffusion", "diffusion", "openai", "claude", "langchain"],
+  "deep learning": ["pytorch", "tensorflow", "keras", "jax", "cuda"],
+  "neural networks": ["pytorch", "tensorflow", "keras", "jax"],
+  "natural language processing": ["transformers", "spacy", "nltk", "hugging face", "huggingface", "bert"],
+  nlp: ["transformers", "spacy", "nltk", "hugging face", "huggingface", "bert"],
+  "computer vision": ["opencv", "pytorch", "tensorflow", "yolo", "detectron"],
+  "model serving": ["triton", "torchserve", "tensorflow serving", "onnx", "vllm", "tensorrt", "bentoml"],
+  "model deployment": ["triton", "torchserve", "onnx", "vllm", "tensorrt", "sagemaker"],
+  inference: ["triton", "torchserve", "onnx", "vllm", "tensorrt"],
+  "vector search": ["pinecone", "weaviate", "faiss", "milvus", "qdrant", "embeddings"],
+  "semantic search": ["pinecone", "weaviate", "faiss", "milvus", "embeddings", "elasticsearch"],
+  "prompt engineering": ["langchain", "openai", "llm", "dspy"],
+  embeddings: ["openai", "sentence-transformers", "hugging face", "word2vec", "faiss"],
 };
 
 function present(skill: string, haystack: string): boolean {

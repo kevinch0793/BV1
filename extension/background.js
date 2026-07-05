@@ -13,27 +13,49 @@ async function getConfig() {
 function scrape() {
   const visible = (el) => !!(el.offsetParent || el.getClientRects().length) && !el.disabled && !el.readOnly;
 
+  const clean = (s) => (s || "").replace(/\s+/g, " ").trim();
   const labelFor = (el) => {
-    if (el.id) {
-      const l = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-      if (l && l.innerText.trim()) return l.innerText.trim();
-    }
-    if (el.getAttribute("aria-label")) return el.getAttribute("aria-label").trim();
-    const lb = el.getAttribute("aria-labelledby");
-    if (lb) {
-      const t = lb.split(/\s+/).map((id) => document.getElementById(id)?.innerText || "").join(" ").trim();
+    // 1) Native association: <label for>, wrapping <label> (el.labels covers both).
+    if (el.labels && el.labels.length) {
+      const t = clean(Array.from(el.labels).map((l) => l.innerText).join(" "));
       if (t) return t;
     }
+    if (el.id) {
+      const l = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      if (l && clean(l.innerText)) return clean(l.innerText);
+    }
+    // 2) ARIA.
+    if (el.getAttribute("aria-label")) return clean(el.getAttribute("aria-label"));
+    for (const attr of ["aria-labelledby", "aria-describedby"]) {
+      const ref = el.getAttribute(attr);
+      if (ref) {
+        const t = clean(ref.split(/\s+/).map((id) => document.getElementById(id)?.innerText || "").join(" "));
+        if (t) return t;
+      }
+    }
     const wrap = el.closest("label");
-    if (wrap && wrap.innerText.trim()) return wrap.innerText.trim();
+    if (wrap && clean(wrap.innerText)) return clean(wrap.innerText);
+    // 3) Walk up (Ashby & co. put the question in a label-like child OR a preceding
+    // sibling of the field's container). Return the nearest match.
+    const SEL =
+      "label, legend, h1, h2, h3, h4, h5, [class*='label'], [class*='Label'], [class*='question'], [class*='Question'], [data-testid*='label'], [data-testid*='question'], [id*='label'], [id*='question']";
     let node = el;
-    for (let up = 0; up < 4 && node; up++) {
+    for (let up = 0; up < 6 && node; up++) {
+      // preceding siblings of this node (skip any that are themselves a field)
+      let sib = node.previousElementSibling;
+      for (let n = 0; sib && n < 3; n++, sib = sib.previousElementSibling) {
+        if (sib.querySelector && sib.querySelector("input, textarea, select, [contenteditable='true']")) break;
+        const t = clean(sib.innerText);
+        if (t && t.length >= 2 && t.length <= 300) return t;
+      }
       node = node.parentElement;
       if (!node) break;
-      const cand = node.querySelector("label, legend, h1, h2, h3, h4, [class*='label'], [class*='question']");
-      if (cand && cand.innerText.trim() && !cand.contains(el)) return cand.innerText.trim();
+      const cand = node.querySelector(SEL);
+      if (cand && clean(cand.innerText) && !cand.contains(el)) return clean(cand.innerText);
     }
-    if (el.placeholder) return el.placeholder.trim();
+    // 4) Fallbacks.
+    if (el.getAttribute("name")) return clean(el.getAttribute("name").replace(/[_\-]+/g, " "));
+    if (el.placeholder) return clean(el.placeholder);
     return "";
   };
 
@@ -66,7 +88,10 @@ function scrape() {
     }
     const q = labelFor(el);
     if (!q) continue;
-    if (short && !isQuestion(q) && !isLink(q)) continue; // fill questions + link fields only
+    const required = !!el.required || el.getAttribute("aria-required") === "true";
+    // Inputs: only questions/link fields — UNLESS the field is required (then always
+    // include it so a required question is never silently skipped). Textareas always.
+    if (short && !required && !isQuestion(q) && !isLink(q)) continue;
     const id = "aiq-" + Math.random().toString(36).slice(2, 11);
     el.setAttribute("data-aiqid", id);
     fields.push({ id, question: q.replace(/\s+/g, " ").slice(0, 2000), short });
