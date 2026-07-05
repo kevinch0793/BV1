@@ -37,12 +37,19 @@ function scrape() {
     return "";
   };
 
-  // A single-line <input> is only an open-ended QUESTION (vs a name/email/phone
-  // data field) if its label reads like one.
+  // A single-line <input> is only an open-ended QUESTION if its label reads like one...
   const isQuestion = (q) =>
     /\?\s*$/.test(q) ||
     /^(why|what|how|when|where|who|which|describe|explain|tell|share|list|do you|did you|have you|has your|are you|were you|would you|could you|can you|will you|is there|please\s+(describe|explain|tell|share|list))\b/i.test(q);
-  const TEXT_INPUT = new Set(["", "text", "search"]);
+  // ...or it asks for a link/profile we can fill from the candidate's info.
+  const isLink = (q) => /linked ?-?in|github|gitlab|portfolio|\bwebsite\b|\burl\b|personal (site|page|website)|profile (link|url)/i.test(q);
+  const TEXT_INPUT = new Set(["", "text", "search", "url"]);
+  // Custom dropdown/combobox widgets (e.g. <div class="select"> with a search input,
+  // react-select) — never type free text into these.
+  const inSelectWidget = (el) =>
+    el.getAttribute("role") === "combobox" ||
+    !!el.getAttribute("aria-autocomplete") ||
+    !!el.closest('select, [role="combobox"], [role="listbox"], [aria-haspopup="listbox"], .select, [class*="select__"], [class*="Select__"], [class*="dropdown"], [class*="combobox"], [class*="autocomplete"]');
 
   const els = Array.from(document.querySelectorAll("textarea, input, [contenteditable='true']")).filter(visible);
   const fields = [];
@@ -51,13 +58,15 @@ function scrape() {
     if (el.tagName.toLowerCase() === "input") {
       const type = (el.getAttribute("type") || "").toLowerCase();
       if (!TEXT_INPUT.has(type)) continue; // skip checkbox/radio/email/tel/number/file/date/...
+      if (inSelectWidget(el)) continue; // skip custom <div class="select"> / combobox inputs
       short = true; // single-line input → one-line answer
     } else {
+      if (inSelectWidget(el)) continue;
       short = false; // textarea / contenteditable → paragraph
     }
     const q = labelFor(el);
     if (!q) continue;
-    if (short && !isQuestion(q)) continue; // don't fill name/email/URL data fields
+    if (short && !isQuestion(q) && !isLink(q)) continue; // fill questions + link fields only
     const id = "aiq-" + Math.random().toString(36).slice(2, 11);
     el.setAttribute("data-aiqid", id);
     fields.push({ id, question: q.replace(/\s+/g, " ").slice(0, 2000), short });

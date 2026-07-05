@@ -13,6 +13,19 @@ export const profileInclude = {
 
 export type FullProfile = Prisma.ProfileGetPayload<{ include: typeof profileInclude }>;
 
+// Slim include for LLM use (tailoring, application answers) — the profile's own
+// data WITHOUT its `jobs` relation, which can be thousands of heavy rows (each JD
+// up to 20k chars) and is never used to build a ProfileForLLM. Loading it made the
+// answer endpoint slow and contend with the tailoring pipeline's DB load.
+export const llmProfileInclude = {
+  experiences: { orderBy: { order: "asc" } },
+  education: { orderBy: { order: "asc" } },
+  skills: true,
+  baseResume: true,
+} satisfies Prisma.ProfileInclude;
+
+export type LlmProfile = Prisma.ProfileGetPayload<{ include: typeof llmProfileInclude }>;
+
 /** Parse an Experience.projects JSON column into project subgroups. */
 export function asProjectGroups(v: unknown): ProjectGroup[] {
   if (!Array.isArray(v)) return [];
@@ -38,8 +51,9 @@ export function asLinks(v: unknown): Record<string, string> {
   return {};
 }
 
-/** Map a loaded Prisma profile into the shape the LLM prompts expect. */
-export function toProfileForLLM(p: FullProfile): ProfileForLLM {
+/** Map a loaded Prisma profile into the shape the LLM prompts expect. Accepts the
+ * slim `llmProfileInclude` payload (FullProfile is a superset, so it works too). */
+export function toProfileForLLM(p: LlmProfile): ProfileForLLM {
   return {
     fullName: p.fullName,
     email: p.email,

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { profileInclude, toProfileForLLM } from "@/lib/profile-data";
+import { llmProfileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { tailorResume } from "@/lib/llm/service";
 import { computeFit, profileToText } from "@/lib/llm/ats";
 import { getSettings } from "@/lib/settings";
@@ -25,7 +25,7 @@ export async function generateTailored(args: {
   const clientId = await assertOwnsProfile(args.profileId);
   const profile = await prisma.profile.findFirst({
     where: { id: args.profileId, clientId },
-    include: profileInclude,
+    include: llmProfileInclude,
   });
   if (!profile) return { ok: false, error: "Profile not found." };
 
@@ -148,7 +148,7 @@ export async function autoTailorJob(
 
   const profile = await prisma.profile.findFirst({
     where: { id: job.profileId, clientId },
-    include: profileInclude,
+    include: llmProfileInclude,
   });
   if (!profile) return { ok: false, error: "Profile not found." };
 

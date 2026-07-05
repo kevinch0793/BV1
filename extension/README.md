@@ -2,9 +2,11 @@
 
 Auto-drafts the **open-ended** (free-text) questions on a job-application page from
 one of your resume profiles, and fills them into the form. It fills text areas
-(paragraph answers) and single-line text inputs whose label reads like an
-open-ended question ("Why us?", "Describe...") with a short one-line answer.
-Checkboxes, radios, dropdowns, and data fields (name/email/phone/URL) are ignored.
+(paragraph answers), single-line text inputs whose label reads like an open-ended
+question ("Why us?", "Describe...") with a short, casual one-line answer, and
+LinkedIn/GitHub/portfolio link fields (from your profile's links). Checkboxes,
+radios, dropdowns / custom selects (e.g. `<div class="select">`), and other data
+fields (name, email, phone) are left alone.
 All answers use plain keyboard characters only (no em dashes or curly quotes).
 
 It's the "hands"; the app is the "brain" (the `POST /api/answer` endpoint drafts

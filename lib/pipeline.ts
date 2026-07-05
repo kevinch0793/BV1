@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { findJobDescription } from "@/lib/scrape/fetchHtml";
 import { extractJobFields, tailorResume } from "@/lib/llm/service";
-import { profileInclude, toProfileForLLM } from "@/lib/profile-data";
+import { llmProfileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { extractJdSkills, scoreFit, profileToText, type JdSkills } from "@/lib/llm/ats";
 import { getCustomInstructions, type SkillsConfig } from "@/lib/settings";
 import { pruneOldActivity } from "@/lib/retention";
@@ -181,7 +181,7 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
 async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean> {
   const job = await prisma.jobPosting.findUnique({ where: { id: jobId } });
   if (!job) return false;
-  const profile = await prisma.profile.findUnique({ where: { id: job.profileId }, include: profileInclude });
+  const profile = await prisma.profile.findUnique({ where: { id: job.profileId }, include: llmProfileInclude });
   if (!profile) return false;
 
   const mode: "with_base" | "from_scratch" = profile.baseResume ? "with_base" : "from_scratch";

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
-import { profileInclude, toProfileForLLM } from "@/lib/profile-data";
+import { llmProfileInclude, toProfileForLLM, asLinks } from "@/lib/profile-data";
 import { profileToText } from "@/lib/llm/ats";
 import { answerApplicationQuestions } from "@/lib/llm/answer";
 
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
 
   const profile = await prisma.profile.findFirst({
     where: { id: settings.answerProfileId, clientId: settings.clientId },
-    include: profileInclude,
+    include: llmProfileInclude,
   });
   if (!profile) return json({ error: "Answering profile not found." }, 400);
 
@@ -60,7 +60,20 @@ export async function POST(req: Request) {
   if (!questions.length) return json({ error: "No questions provided." }, 400);
   const jobText = typeof body.jobText === "string" ? body.jobText.slice(0, 8000) : undefined;
 
-  const profileText = [profile.baseResume?.rawText, profileToText(toProfileForLLM(profile))].filter(Boolean).join("\n\n");
+  // Contact + links so link/URL and identity questions get the real values.
+  const links = asLinks(profile.links);
+  const contact = [
+    `Name: ${profile.fullName}`,
+    profile.email && `Email: ${profile.email}`,
+    profile.phone && `Phone: ${profile.phone}`,
+    profile.location && `Location: ${profile.location}`,
+    ...Object.entries(links).filter(([, v]) => v && v.trim()).map(([k, v]) => `${k}: ${v}`),
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const profileText = [`# Contact & links\n${contact}`, profile.baseResume?.rawText, profileToText(toProfileForLLM(profile))]
+    .filter(Boolean)
+    .join("\n\n");
 
   try {
     const answers = await answerApplicationQuestions({
