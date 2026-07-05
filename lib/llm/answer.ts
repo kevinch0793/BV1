@@ -32,6 +32,17 @@ Rules:
 - PLAIN KEYBOARD CHARACTERS ONLY: use a hyphen (-), never en/em dashes; straight quotes (' and ") never curly ones; three dots (...) never an ellipsis character.
 - Return exactly one answer per question, in the same order, echoing each question. Never leave an experience/skill question blank.`;
 
+/** Reject if `p` doesn't settle within `ms`, so an answer never hangs the request. */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => {
+      const t = setTimeout(() => reject(new Error(`answer LLM timed out after ${ms}ms`)), ms);
+      if (typeof t === "object" && "unref" in t) t.unref();
+    }),
+  ]);
+}
+
 /** Draft one plain-text answer per question, grounded in `profileText` (+ JD). */
 export async function answerApplicationQuestions(args: {
   profileText: string;
@@ -52,10 +63,19 @@ export async function answerApplicationQuestions(args: {
 
   let answers: { question: string; answer: string }[];
   try {
-    answers = (await generateStructuredOpenAI({ schema: AnswerSchema, schemaName: "application_answers", system: SYSTEM, prompt, model: OPENAI_TAILOR_MODEL, maxTokens: 4000 })).answers;
+    // Primary: OpenAI gpt-4o — a different rate pool than the Anthropic tailoring.
+    answers = (
+      await withTimeout(
+        generateStructuredOpenAI({ schema: AnswerSchema, schemaName: "application_answers", system: SYSTEM, prompt, model: OPENAI_TAILOR_MODEL, maxTokens: 4000 }),
+        35000,
+      )
+    ).answers;
   } catch {
-    // OpenAI errored (e.g. throttled/misconfigured) — fall back to Claude.
-    answers = (await generateStructured({ schema: AnswerSchema, system: SYSTEM, prompt, model: CLAUDE_MODEL, maxTokens: 4000 })).answers;
+    // OpenAI errored/timed out — fall back to Claude, but bounded so a busy
+    // tailoring batch on Anthropic can't hang this interactive request.
+    answers = (
+      await withTimeout(generateStructured({ schema: AnswerSchema, system: SYSTEM, prompt, model: CLAUDE_MODEL, maxTokens: 4000 }), 30000)
+    ).answers;
   }
   // Guarantee plain keyboard characters (no em dashes, curly quotes, ellipsis, …).
   return answers.map((a) => ({ question: a.question, answer: toPlainKeyboard(a.answer) }));
