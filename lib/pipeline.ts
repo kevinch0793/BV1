@@ -58,16 +58,59 @@ export async function startPipeline(profileId: string, opts: PipelineOpts): Prom
 // — raise this further only while watching box memory + the 429 rate.
 // Override with PIPELINE_CONCURRENCY.
 const GLOBAL_CONCURRENCY = Math.max(1, Number(process.env.PIPELINE_CONCURRENCY) || 20);
+// Fair scheduling across profiles: the GLOBAL_CONCURRENCY slots are shared by
+// giving each freed slot to the waiting profile that currently holds the FEWEST
+// slots. So a profile that dumps 500 URLs can't starve a profile with 8 — every
+// active profile gets a roughly equal share (max-min fairness), while a lone
+// profile still uses all the slots (no waste).
 let activeJobs = 0;
-const jobWaiters: (() => void)[] = [];
-async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
-  if (activeJobs >= GLOBAL_CONCURRENCY) await new Promise<void>((resolve) => jobWaiters.push(resolve));
-  activeJobs++;
+const activeByProfile = new Map<string, number>(); // profileId -> slots currently in use
+const waitQueues = new Map<string, Array<() => void>>(); // profileId -> FIFO of slot-grant callbacks
+
+// The waiting profile holding the fewest slots (ties: earliest to start waiting).
+function fewestLoadedWaiting(): string | null {
+  let best: string | null = null;
+  let bestActive = Infinity;
+  for (const [pid, q] of waitQueues) {
+    if (!q.length) continue;
+    const a = activeByProfile.get(pid) ?? 0;
+    if (a < bestActive) {
+      bestActive = a;
+      best = pid;
+    }
+  }
+  return best;
+}
+
+// Grant slots to waiting profiles (fairest first) until the global cap is hit.
+function pump(): void {
+  while (activeJobs < GLOBAL_CONCURRENCY) {
+    const pid = fewestLoadedWaiting();
+    if (!pid) break;
+    const q = waitQueues.get(pid)!;
+    const grant = q.shift()!;
+    if (!q.length) waitQueues.delete(pid);
+    activeJobs++;
+    activeByProfile.set(pid, (activeByProfile.get(pid) ?? 0) + 1);
+    grant(); // wake the waiter — its slot is already accounted for
+  }
+}
+
+async function withSlot<T>(profileId: string, fn: () => Promise<T>): Promise<T> {
+  await new Promise<void>((resolve) => {
+    const q = waitQueues.get(profileId);
+    if (q) q.push(resolve);
+    else waitQueues.set(profileId, [resolve]);
+    pump();
+  });
   try {
     return await fn();
   } finally {
     activeJobs--;
-    jobWaiters.shift()?.();
+    const left = (activeByProfile.get(profileId) ?? 1) - 1;
+    if (left <= 0) activeByProfile.delete(profileId);
+    else activeByProfile.set(profileId, left);
+    pump();
   }
 }
 
@@ -99,7 +142,7 @@ async function loop(profileId: string): Promise<void> {
     // deleted mid-flight → P2025) is swallowed so it never crashes the loop.
     await Promise.all(
       jobs.map((j) =>
-        withSlot(() => processJob(profileId, j.id, canTailor)).catch((e) => {
+        withSlot(profileId, () => processJob(profileId, j.id, canTailor)).catch((e) => {
           console.error(`[pipeline] job ${j.id} failed:`, e instanceof Error ? e.message : e);
         }),
       ),
