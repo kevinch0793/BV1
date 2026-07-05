@@ -50,8 +50,14 @@ export async function startPipeline(profileId: string, opts: PipelineOpts): Prom
 // a batch to several profiles no longer multiplies the load (it used to be per
 // profile: 3 profiles × 12 = 36 in flight, which saturated the LLM account and
 // caused rate-limit timeouts). Tailoring on Anthropic is the rate-limited stage.
+//
+// Default 20: measured limits leave huge headroom (20 concurrent tailors use only
+// ~6% of the Anthropic 2M OTPM budget and a sliver of OpenAI), and a single tailor
+// is ~35s, so 20-wide gives ~30 jobs/min. The practical ceiling here is the box
+// (RAM/CPU/sockets, and Puppeteer renders which are separately capped), not the API
+// — raise this further only while watching box memory + the 429 rate.
 // Override with PIPELINE_CONCURRENCY.
-const GLOBAL_CONCURRENCY = Math.max(1, Number(process.env.PIPELINE_CONCURRENCY) || 6);
+const GLOBAL_CONCURRENCY = Math.max(1, Number(process.env.PIPELINE_CONCURRENCY) || 20);
 let activeJobs = 0;
 const jobWaiters: (() => void)[] = [];
 async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
