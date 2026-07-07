@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { llmProfileInclude, toProfileForLLM, asLinks } from "@/lib/profile-data";
 import { profileToText } from "@/lib/llm/ats";
 import { answerApplicationQuestions } from "@/lib/llm/answer";
+import { getSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -27,19 +28,22 @@ export async function POST(req: Request) {
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   if (!token) return json({ error: "Missing bearer token." }, 401);
 
+  // Each token is bound to ONE profile (a client can have several — one per
+  // candidate — so two candidates use the extension at once without clobbering).
   const hash = createHash("sha256").update(token).digest("hex");
-  const settings = await prisma.settings.findFirst({
-    where: { apiTokenHash: hash },
-    select: { clientId: true, answerProfileId: true, customInstructions: true, client: { select: { status: true } } },
+  const tokenRow = await prisma.answerToken.findFirst({
+    where: { tokenHash: hash },
+    select: { profileId: true, clientId: true, client: { select: { status: true } } },
   });
-  if (!settings || settings.client.status !== "approved") return json({ error: "Invalid token." }, 401);
-  if (!settings.answerProfileId) return json({ error: "No answering profile configured — pick one in Settings." }, 400);
+  if (!tokenRow || tokenRow.client.status !== "approved") return json({ error: "Invalid token." }, 401);
 
   const profile = await prisma.profile.findFirst({
-    where: { id: settings.answerProfileId, clientId: settings.clientId },
+    where: { id: tokenRow.profileId, clientId: tokenRow.clientId },
     include: llmProfileInclude,
   });
   if (!profile) return json({ error: "Answering profile not found." }, 400);
+  // Best-effort usage stamp for the Settings UI (updateMany never throws on 0 rows).
+  void prisma.answerToken.updateMany({ where: { tokenHash: hash }, data: { lastUsedAt: new Date() } }).catch(() => {});
 
   let body: { questions?: unknown; jobUrl?: unknown; jobText?: unknown };
   try {
@@ -75,12 +79,14 @@ export async function POST(req: Request) {
     .filter(Boolean)
     .join("\n\n");
 
+  const { customInstructions } = await getSettings(tokenRow.clientId);
+
   try {
     const answers = await answerApplicationQuestions({
       profileText,
       jobText,
       questions,
-      customInstructions: settings.customInstructions ?? undefined,
+      customInstructions: customInstructions ?? undefined,
     });
     return json({ answers });
   } catch (e) {

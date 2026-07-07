@@ -28,9 +28,9 @@ const saveBtn =
 export default async function SettingsPage() {
   const { id: clientId } = await requireClient();
   const settings = await getSettings(clientId);
-  const [profiles, answerRow] = await Promise.all([
+  const [profiles, answerTokens] = await Promise.all([
     prisma.profile.findMany({ where: { clientId }, orderBy: { createdAt: "asc" }, select: { id: true, fullName: true, label: true } }),
-    prisma.settings.findUnique({ where: { clientId }, select: { apiTokenHash: true, answerProfileId: true } }),
+    prisma.answerToken.findMany({ where: { clientId }, select: { id: true, profileId: true, createdAt: true, lastUsedAt: true } }),
   ]);
 
   return (
@@ -131,12 +131,16 @@ export default async function SettingsPage() {
       <section className="rounded-xl border border-neutral-200 bg-white p-5">
         <h2 className="text-lg font-semibold text-neutral-900">Application-answer extension</h2>
         <p className="mb-3 text-xs text-neutral-500">
-          Pick a profile and generate an API token, then use the browser extension to auto-fill the open-ended questions on job-application pages. The token is shown once — paste it into the extension&apos;s options and keep it safe.
+          Generate a token for each profile you want to answer as, then paste each token into that profile&apos;s browser-extension install (e.g. a separate Chrome profile per candidate). Each token answers as its own profile, so several candidates can use the extension at the same time. A token is shown once — copy it and keep it safe.
         </p>
         <ApiTokenPanel
           profiles={profiles.map((p) => ({ id: p.id, name: p.fullName || p.label }))}
-          hasToken={!!answerRow?.apiTokenHash}
-          answerProfileId={answerRow?.answerProfileId ?? null}
+          tokens={answerTokens.map((t) => ({
+            id: t.id,
+            profileId: t.profileId,
+            createdAt: t.createdAt.toISOString(),
+            lastUsedAt: t.lastUsedAt ? t.lastUsedAt.toISOString() : null,
+          }))}
         />
       </section>
     </div>

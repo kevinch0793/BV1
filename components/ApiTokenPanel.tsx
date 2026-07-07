@@ -1,60 +1,50 @@
 "use client";
 
 import { useState } from "react";
-import { generateApiToken, revokeApiToken, setAnswerProfile } from "@/app/actions/settings";
+import { useRouter } from "next/navigation";
+import { generateAnswerToken, revokeAnswerToken } from "@/app/actions/settings";
 
-const input =
-  "rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500";
 const primaryBtn = "rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-40";
 const secondaryBtn = "rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-40";
 
+type TokenInfo = { id: string; profileId: string; createdAt: string; lastUsedAt: string | null };
+
 export function ApiTokenPanel({
   profiles,
-  hasToken,
-  answerProfileId,
+  tokens,
 }: {
   profiles: { id: string; name: string }[];
-  hasToken: boolean;
-  answerProfileId: string | null;
+  tokens: TokenInfo[];
 }) {
-  const [profileId, setProfileId] = useState(answerProfileId ?? "");
-  const [profileSaved, setProfileSaved] = useState(false);
-  const [tokenExists, setTokenExists] = useState(hasToken);
-  const [token, setToken] = useState<string | null>(null); // shown once, right after generating
+  const router = useRouter();
+  const [revealed, setRevealed] = useState<{ profileId: string; token: string } | null>(null);
   const [copied, setCopied] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  async function saveProfile(id: string) {
-    setProfileId(id);
-    setProfileSaved(false);
-    const fd = new FormData();
-    fd.set("answerProfileId", id);
-    await setAnswerProfile(fd);
-    setProfileSaved(true);
-  }
-  async function generate() {
-    setBusy(true);
+  const tokenByProfile = new Map(tokens.map((t) => [t.profileId, t]));
+
+  async function generate(profileId: string) {
+    setBusyId(profileId);
+    setCopied(false);
     try {
-      const res = await generateApiToken();
-      setToken(res.token);
-      setTokenExists(true);
-      setCopied(false);
+      const res = await generateAnswerToken(profileId);
+      setRevealed({ profileId, token: res.token });
+      router.refresh();
     } finally {
-      setBusy(false);
+      setBusyId(null);
     }
   }
-  async function revoke() {
-    setBusy(true);
+  async function revoke(tokenId: string, profileId: string) {
+    setBusyId(profileId);
     try {
-      await revokeApiToken();
-      setTokenExists(false);
-      setToken(null);
+      await revokeAnswerToken(tokenId);
+      setRevealed((r) => (r?.profileId === profileId ? null : r));
+      router.refresh();
     } finally {
-      setBusy(false);
+      setBusyId(null);
     }
   }
-  async function copy() {
-    if (!token) return;
+  async function copy(token: string) {
     try {
       await navigator.clipboard.writeText(token);
       setCopied(true);
@@ -63,39 +53,52 @@ export function ApiTokenPanel({
     }
   }
 
+  if (!profiles.length) return <p className="text-sm text-amber-600">Create a profile first.</p>;
+
   return (
-    <div className="space-y-4">
-      <label className="flex max-w-sm flex-col gap-1 text-xs font-medium text-neutral-500">
-        Answer as
-        <select value={profileId} onChange={(e) => saveProfile(e.target.value)} className={input}>
-          <option value="">— pick a profile —</option>
-          {profiles.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-        {!profiles.length && <span className="text-amber-600">Create a profile first.</span>}
-        {profileSaved && <span className="text-emerald-600">Saved.</span>}
-      </label>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <button onClick={generate} disabled={busy} className={primaryBtn}>
-          {busy ? "Working…" : tokenExists ? "Regenerate token" : "Generate token"}
-        </button>
-        {tokenExists && (
-          <button onClick={revoke} disabled={busy} className={secondaryBtn}>Revoke</button>
-        )}
-        <span className="text-xs text-neutral-400">{tokenExists ? "A token is active." : "No token yet."}</span>
-      </div>
-
-      {token && (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3">
-          <div className="mb-1 text-xs font-medium text-emerald-700">New token — copy it now; it won&apos;t be shown again:</div>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 break-all rounded bg-white px-2 py-1 text-xs text-neutral-800">{token}</code>
-            <button onClick={copy} className={secondaryBtn}>{copied ? "Copied" : "Copy"}</button>
+    <div className="divide-y divide-neutral-100 rounded-md border border-neutral-200">
+      {profiles.map((p) => {
+        const tok = tokenByProfile.get(p.id);
+        const busy = busyId === p.id;
+        const showToken = revealed?.profileId === p.id ? revealed.token : null;
+        return (
+          <div key={p.id} className="flex flex-col gap-2 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-neutral-900">{p.name}</div>
+                <div className="text-xs text-neutral-400">
+                  {tok
+                    ? `Token active${tok.lastUsedAt ? ` — last used ${new Date(tok.lastUsedAt).toLocaleDateString()}` : " — not used yet"}`
+                    : "No token"}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => generate(p.id)} disabled={busy} className={primaryBtn}>
+                  {busy ? "Working…" : tok ? "Regenerate" : "Generate token"}
+                </button>
+                {tok && (
+                  <button onClick={() => revoke(tok.id, p.id)} disabled={busy} className={secondaryBtn}>
+                    Revoke
+                  </button>
+                )}
+              </div>
+            </div>
+            {showToken && (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-2.5">
+                <div className="mb-1 text-xs font-medium text-emerald-700">
+                  New token for {p.name} — copy it now; it won&apos;t be shown again:
+                </div>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 break-all rounded bg-white px-2 py-1 text-xs text-neutral-800">{showToken}</code>
+                  <button onClick={() => copy(showToken)} className={secondaryBtn}>
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })}
     </div>
   );
 }
