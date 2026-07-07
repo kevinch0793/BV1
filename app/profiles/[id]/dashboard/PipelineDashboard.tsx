@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addJobUrls, setJobFromText, deleteJob, setApplyStatus, type ApplyStatus } from "@/app/actions/jobs";
+import { addJobUrls, setJobFromText, deleteJob, deleteJobs, setApplyStatus, type ApplyStatus } from "@/app/actions/jobs";
 import { startPipeline, jobStatuses, ensurePipelineRunning, retryJob, retryJobs, type LiveJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResumeNative } from "@/lib/exportClient";
@@ -97,6 +97,7 @@ export function PipelineDashboard({
   // Row selection for bulk "Retry fetch".
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [retrying, setRetrying] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const lastClickedRef = useRef<string | null>(null); // anchor for shift-click range
 
   // Re-sort whenever job data changes (incl. after tailoring status updates from
@@ -155,11 +156,14 @@ export function PipelineDashboard({
 
   function toggleSelect(id: string, shift = false) {
     const order = sortedJobs.map((j) => j.id);
+    // Capture the anchor NOW — the setSelected updater runs after this function
+    // returns, by which point we've already moved the anchor to `id`.
+    const anchor = lastClickedRef.current;
     setSelected((s) => {
       const n = new Set(s);
       // Shift-click selects the whole range from the last-clicked row to this one.
-      if (shift && lastClickedRef.current && lastClickedRef.current !== id) {
-        const a = order.indexOf(lastClickedRef.current);
+      if (shift && anchor && anchor !== id) {
+        const a = order.indexOf(anchor);
         const b = order.indexOf(id);
         if (a !== -1 && b !== -1) {
           const [lo, hi] = a < b ? [a, b] : [b, a];
@@ -186,6 +190,18 @@ export function PipelineDashboard({
       await kick(); // re-fetches the reset jobs
     } finally {
       setRetrying(false);
+    }
+  }
+  async function removeSelected() {
+    if (!selected.size) return;
+    if (!confirm(`Remove ${selected.size} selected job${selected.size === 1 ? "" : "s"}? This can't be undone.`)) return;
+    setRemoving(true);
+    try {
+      await deleteJobs([...selected], profileId);
+      setSelected(new Set());
+      router.refresh();
+    } finally {
+      setRemoving(false);
     }
   }
 
@@ -250,10 +266,17 @@ export function PipelineDashboard({
               <span className="text-xs text-neutral-500">{selected.size} selected</span>
               <button
                 onClick={retrySelected}
-                disabled={retrying}
+                disabled={retrying || removing}
                 className="rounded-md bg-sky-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-800 disabled:opacity-50"
               >
                 {retrying ? "Retrying…" : "Retry fetch"}
+              </button>
+              <button
+                onClick={removeSelected}
+                disabled={retrying || removing}
+                className="rounded-md border border-red-300 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                {removing ? "Removing…" : "Remove"}
               </button>
               <button onClick={() => setSelected(new Set())} className="text-xs text-neutral-500 hover:underline">
                 Clear

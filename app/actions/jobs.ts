@@ -145,6 +145,17 @@ export async function deleteJob(id: string, profileId: string) {
   revalidatePath("/");
 }
 
+/** Bulk-delete the selected jobs (their tailored resumes cascade). */
+export async function deleteJobs(ids: string[], profileId: string): Promise<{ removed: number }> {
+  await assertOwnsProfile(profileId);
+  const unique = [...new Set(ids ?? [])].slice(0, 1000);
+  if (!unique.length) return { removed: 0 };
+  const res = await prisma.jobPosting.deleteMany({ where: { id: { in: unique }, profileId } });
+  revalidatePath(`/profiles/${profileId}/dashboard`);
+  revalidatePath("/");
+  return { removed: res.count };
+}
+
 export type ApplyStatus = "none" | "applied" | "not_available";
 
 /**
