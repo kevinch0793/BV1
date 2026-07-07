@@ -5,35 +5,9 @@ import { prisma } from "@/lib/db";
 import { findJobDescription } from "@/lib/scrape/fetchHtml";
 import { extractJobFields } from "@/lib/llm/service";
 import { assertOwnsProfile, assertOwnsJob } from "@/lib/owner";
+import { normalizeUrl, normalizeUrls } from "@/lib/url";
 
 export type JobActionResult = { ok: boolean; error?: string; needsPaste?: boolean };
-
-// Canonicalize a URL so trailing slashes, fragments and host casing don't sneak
-// in duplicates. Query strings are kept (job ids often live there, e.g. gh_jid).
-function normalizeUrl(raw: string | null | undefined): string | null {
-  let s = (raw ?? "").trim();
-  if (!s) return null;
-  if (!/^https?:\/\//i.test(s)) s = `https://${s}`;
-  try {
-    const u = new URL(s);
-    u.hash = "";
-    u.hostname = u.hostname.toLowerCase();
-    let out = u.toString();
-    if (out.endsWith("/")) out = out.slice(0, -1);
-    return out;
-  } catch {
-    return s.replace(/\/+$/, "");
-  }
-}
-
-function normalizeUrls(raw: string): string[] {
-  const seen = new Set<string>();
-  for (const line of raw.split(/[\n,]/)) {
-    const u = normalizeUrl(line);
-    if (u) seen.add(u); // de-dupes within the submitted batch
-  }
-  return [...seen];
-}
 
 /** Bulk-add job URLs as pending entries (no scraping yet). Duplicates — within
  *  the batch or already on this profile — are skipped, not re-added. */

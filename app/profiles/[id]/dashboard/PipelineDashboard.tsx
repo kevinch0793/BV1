@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addJobUrls, setJobFromText, deleteJob, setApplyStatus, type ApplyStatus } from "@/app/actions/jobs";
-import { startPipeline, jobStatuses, ensurePipelineRunning, retryJob, type LiveJob } from "@/app/actions/pipeline";
+import { startPipeline, jobStatuses, ensurePipelineRunning, retryJob, retryJobs, type LiveJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResumeNative } from "@/lib/exportClient";
 import { saveResumeToDownloads } from "@/app/actions/export";
@@ -94,6 +94,9 @@ export function PipelineDashboard({
   jobIdsRef.current = jobs.map((j) => j.id);
   const [adding, startAdd] = useTransition();
   const [addMsg, setAddMsg] = useState<string | null>(null);
+  // Row selection for bulk "Retry fetch".
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [retrying, setRetrying] = useState(false);
 
   // Re-sort whenever job data changes (incl. after tailoring status updates from
   // polling): Fetchable+Remote → Fetchable+Onsite → Unfetchable. Stable within a
@@ -147,6 +150,30 @@ export function PipelineDashboard({
     await startPipeline(profileId);
     setPolling(true);
     router.refresh();
+  }
+
+  function toggleSelect(id: string) {
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
+  const allSelected = sortedJobs.length > 0 && sortedJobs.every((j) => selected.has(j.id));
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(sortedJobs.map((j) => j.id)));
+  }
+  async function retrySelected() {
+    if (!selected.size) return;
+    setRetrying(true);
+    try {
+      await retryJobs([...selected]);
+      setSelected(new Set());
+      await kick(); // re-fetches the reset jobs
+    } finally {
+      setRetrying(false);
+    }
   }
 
   return (
@@ -203,7 +230,24 @@ export function PipelineDashboard({
 
       {/* Job table */}
       <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-        <div className="border-b border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700">Jobs ({jobs.length})</div>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 px-4 py-2">
+          <span className="text-sm font-medium text-neutral-700">Jobs ({jobs.length})</span>
+          {selected.size > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-neutral-500">{selected.size} selected</span>
+              <button
+                onClick={retrySelected}
+                disabled={retrying}
+                className="rounded-md bg-sky-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-800 disabled:opacity-50"
+              >
+                {retrying ? "Retrying…" : "Retry fetch"}
+              </button>
+              <button onClick={() => setSelected(new Set())} className="text-xs text-neutral-500 hover:underline">
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
         {jobs.length === 0 ? (
           <p className="px-4 py-6 text-sm text-neutral-400">
             {isToday ? "No jobs yet — add URLs above." : `No jobs from ${dayLabel}.`}
@@ -213,6 +257,15 @@ export function PipelineDashboard({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-neutral-200 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
+                  <th className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      aria-label="Select all jobs"
+                      className="h-4 w-4 rounded border-neutral-300 align-middle"
+                    />
+                  </th>
                   <th className="px-4 py-2 font-medium">Status</th>
                   <th className="px-4 py-2 font-medium">Role</th>
                   <th className="px-4 py-2 font-medium">Company</th>
@@ -231,6 +284,8 @@ export function PipelineDashboard({
                     <JobRow
                       key={j.id}
                       job={jm}
+                      selected={selected.has(j.id)}
+                      onToggleSelect={toggleSelect}
                       onRemove={(id) => deleteJob(id, profileId).then(() => router.refresh())}
                       onRetry={(id) => retryJob(id).then(kick)}
                       onPasted={kick}
@@ -249,12 +304,16 @@ export function PipelineDashboard({
 
 function JobRow({
   job,
+  selected,
+  onToggleSelect,
   onRemove,
   onRetry,
   onPasted,
   onRefresh,
 }: {
   job: Job;
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
   onRemove: (id: string) => void;
   onRetry: (id: string) => void;
   onPasted: () => void;
@@ -327,6 +386,15 @@ function JobRow({
   return (
     <>
       <tr className="align-top">
+        <td className="px-3 py-3">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect(job.id)}
+            aria-label="Select job"
+            className="h-4 w-4 rounded border-neutral-300 align-middle"
+          />
+        </td>
         <td className="px-4 py-3 whitespace-nowrap">
           <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium ${st.style}`}>
             {busy && <Spinner small />}
@@ -405,7 +473,7 @@ function JobRow({
       </tr>
       {showPaste && (
         <tr>
-          <td colSpan={7} className="px-4 pb-3">
+          <td colSpan={8} className="px-4 pb-3">
             <form
               action={(fd) => {
                 setPasteErr(null);

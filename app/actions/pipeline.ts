@@ -6,6 +6,7 @@ import { getSettings } from "@/lib/settings";
 import { requireClient } from "@/lib/auth";
 import { assertOwnsProfile, assertOwnsJob } from "@/lib/owner";
 import { startPipeline as start, isPipelineRunning, markRenderRetry } from "@/lib/pipeline";
+import { normalizeUrl } from "@/lib/url";
 
 /**
  * Start the background fetch+tailor pipeline. Template/model/instructions come
@@ -118,4 +119,31 @@ export async function retryJob(jobId: string): Promise<void> {
   });
   const job = await prisma.jobPosting.findUnique({ where: { id: jobId }, select: { profileId: true } });
   if (job) revalidatePath(`/profiles/${job.profileId}/dashboard`);
+}
+
+/**
+ * Bulk re-fetch: re-queue the selected jobs for another fetch+tailor pass. Also
+ * REPAIRS a mangled URL (e.g. a pasted "Company<TAB>Role<TAB>URL" row that got
+ * jammed together) by extracting the real URL, so a retry actually succeeds
+ * instead of failing on the same broken URL. The dashboard kicks the pipeline
+ * after this resolves.
+ */
+export async function retryJobs(jobIds: string[]): Promise<{ retried: number }> {
+  const { id: clientId } = await requireClient();
+  const ids = [...new Set(jobIds ?? [])].slice(0, 500);
+  if (!ids.length) return { retried: 0 };
+  const jobs = await prisma.jobPosting.findMany({
+    where: { id: { in: ids }, profile: { clientId } },
+    select: { id: true, url: true, profileId: true },
+  });
+  for (const j of jobs) {
+    markRenderRetry(j.id);
+    const fixed = j.url ? normalizeUrl(j.url) : null; // repair a mangled URL if we can
+    await prisma.jobPosting.update({
+      where: { id: j.id },
+      data: { status: "pending", error: null, ...(fixed && fixed !== j.url ? { url: fixed } : {}) },
+    });
+  }
+  for (const pid of new Set(jobs.map((j) => j.profileId))) revalidatePath(`/profiles/${pid}/dashboard`);
+  return { retried: jobs.length };
 }
