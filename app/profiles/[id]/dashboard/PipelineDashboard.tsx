@@ -97,6 +97,7 @@ export function PipelineDashboard({
   // Row selection for bulk "Retry fetch".
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [retrying, setRetrying] = useState(false);
+  const lastClickedRef = useRef<string | null>(null); // anchor for shift-click range
 
   // Re-sort whenever job data changes (incl. after tailoring status updates from
   // polling): Fetchable+Remote → Fetchable+Onsite → Unfetchable. Stable within a
@@ -152,13 +153,25 @@ export function PipelineDashboard({
     router.refresh();
   }
 
-  function toggleSelect(id: string) {
+  function toggleSelect(id: string, shift = false) {
+    const order = sortedJobs.map((j) => j.id);
     setSelected((s) => {
       const n = new Set(s);
+      // Shift-click selects the whole range from the last-clicked row to this one.
+      if (shift && lastClickedRef.current && lastClickedRef.current !== id) {
+        const a = order.indexOf(lastClickedRef.current);
+        const b = order.indexOf(id);
+        if (a !== -1 && b !== -1) {
+          const [lo, hi] = a < b ? [a, b] : [b, a];
+          for (let i = lo; i <= hi; i++) n.add(order[i]);
+          return n;
+        }
+      }
       if (n.has(id)) n.delete(id);
       else n.add(id);
       return n;
     });
+    lastClickedRef.current = id;
   }
   const allSelected = sortedJobs.length > 0 && sortedJobs.every((j) => selected.has(j.id));
   function toggleAll() {
@@ -313,7 +326,7 @@ function JobRow({
 }: {
   job: Job;
   selected: boolean;
-  onToggleSelect: (id: string) => void;
+  onToggleSelect: (id: string, shift?: boolean) => void;
   onRemove: (id: string) => void;
   onRetry: (id: string) => void;
   onPasted: () => void;
@@ -326,6 +339,7 @@ function JobRow({
   const [tailored, setTailored] = useState<boolean>(!!job.appliedTailored);
   const [pending, start] = useTransition();
   const [pasteErr, setPasteErr] = useState<string | null>(null);
+  const shiftRef = useRef(false); // shift-key state at click time, for range select
 
   // Keep the local controls in sync after a server refresh.
   useEffect(() => {
@@ -390,7 +404,9 @@ function JobRow({
           <input
             type="checkbox"
             checked={selected}
-            onChange={() => onToggleSelect(job.id)}
+            // onMouseDown fires before change and carries the shift-key state.
+            onMouseDown={(e) => (shiftRef.current = e.shiftKey)}
+            onChange={() => onToggleSelect(job.id, shiftRef.current)}
             aria-label="Select job"
             className="h-4 w-4 rounded border-neutral-300 align-middle"
           />
