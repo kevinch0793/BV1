@@ -52,13 +52,9 @@ export const EVENT_STAGES = [
 ];
 export const stageOf = (id: string | null | undefined) => EVENT_STAGES.find((s) => s.id === id) ?? null;
 
-// Interview OUTCOME per event. advanced (moved to next stage) → green check;
-// pending (still waiting on feedback) → amber clock; failed → strikethrough.
-export const EVENT_OUTCOMES = [
-  { id: "advanced", label: "Advanced" },
-  { id: "pending", label: "Pending" },
-  { id: "failed", label: "Failed" },
-];
+// Interview OUTCOME per event — just failed or not. A failed interview renders
+// struck-through + faded on the calendar.
+export const EVENT_OUTCOMES = [{ id: "failed", label: "Failed" }];
 export const outcomeOf = (id: string | null | undefined) => EVENT_OUTCOMES.find((o) => o.id === id) ?? null;
 
 export const EVENT_COLORS = [
