@@ -34,6 +34,7 @@ function clean(input: EventInput) {
   let endTime = !allDay && input.endTime && TIME.test(input.endTime) ? input.endTime : null;
   if (startTime && endTime && endTime < startTime) endTime = null; // ignore a bad range
   const meetingType = input.meetingType === "phone" || input.meetingType === "video" ? input.meetingType : null;
+  const status = EVENT_OUTCOMES.some((o) => o.id === input.status) ? input.status : null;
   return {
     timeZone: allDay ? null : validTimeZone(input.timeZone),
     company,
@@ -48,7 +49,8 @@ function clean(input: EventInput) {
     meetingType,
     meetingLink: meetingType === "video" ? (input.meetingLink ?? "").trim().slice(0, 500) || null : null,
     step: EVENT_STAGES.some((s) => s.id === input.step) ? input.step : null,
-    status: EVENT_OUTCOMES.some((o) => o.id === input.status) ? input.status : null,
+    status,
+    statusNote: status === "failed" ? (input.statusNote ?? "").trim().slice(0, 500) || null : null,
     color,
     profileId: (input.profileId ?? "").trim() || null,
   };

@@ -68,15 +68,32 @@ export function EventModal({ draft, profiles, onClose }: { draft: Draft; profile
             </select>
           </Field>
 
-          <label className="flex w-fit items-center gap-2 text-sm text-neutral-700">
-            <input
-              type="checkbox"
-              checked={f.status === "failed"}
-              onChange={(e) => set("status", e.target.checked ? "failed" : null)}
-              className="h-4 w-4 rounded border-neutral-300"
-            />
-            Mark as failed (crossed out on the calendar)
-          </label>
+          <Field label="Outcome">
+            <div className="flex items-center gap-2">
+              <div className="flex w-fit shrink-0 gap-1 rounded-lg border border-neutral-200 p-1">
+                {[
+                  { id: null as string | null, label: "None", active: "bg-neutral-700 text-white" },
+                  { id: "failed", label: "Failed", active: "bg-rose-600 text-white" },
+                ].map((o) => (
+                  <button
+                    key={o.label}
+                    onClick={() => setF((p) => ({ ...p, status: o.id, statusNote: o.id === "failed" ? p.statusNote : null }))}
+                    className={`rounded-md px-3 py-1 text-xs font-medium ${f.status === o.id ? o.active : "text-neutral-600 hover:bg-neutral-100"}`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+              <input
+                value={f.statusNote ?? ""}
+                onChange={(e) => set("statusNote", e.target.value || null)}
+                onKeyDown={(e) => { if (e.key === "Enter") save(); }}
+                placeholder="Why Failed"
+                disabled={f.status !== "failed"}
+                className={`${inputCls} min-w-0 flex-1 disabled:bg-neutral-50 disabled:text-neutral-400`}
+              />
+            </div>
+          </Field>
 
           {/* Interview meeting type + its body (phone -> profile's number, video -> link) */}
           <div className="flex w-fit gap-1 rounded-lg border border-neutral-200 p-1">

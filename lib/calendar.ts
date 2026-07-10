@@ -20,6 +20,7 @@ export type CalEvent = {
   meetingLink: string | null; // video link, when meetingType = "video"
   step: string | null; // interview stage id (see EVENT_STAGES)
   status: string | null; // interview outcome id (see EVENT_OUTCOMES)
+  statusNote: string | null; // reason for the outcome (e.g. why failed)
   color: string;
 };
 
@@ -37,6 +38,7 @@ export type EventInput = {
   meetingLink: string | null;
   step: string | null;
   status: string | null;
+  statusNote: string | null;
   color: string;
   profileId: string | null;
 };

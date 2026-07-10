@@ -84,7 +84,7 @@ export function WeekGrid({
                     const c = colorOf(e.color);
                     const failed = e.status === "failed";
                     return (
-                      <button key={e.id} onClick={() => onEventClick(e)} title={e.company} className={`flex w-full items-center gap-1 truncate rounded px-1 text-left text-[11px] font-medium text-white ${c.bg} ${failed ? "opacity-60" : ""}`}>
+                      <button key={e.id} onClick={() => onEventClick(e)} title={e.company + (failed && e.statusNote ? ` — failed: ${e.statusNote}` : "")} className={`flex w-full items-center gap-1 truncate rounded px-1 text-left text-[11px] font-medium text-white ${c.bg} ${failed ? "opacity-60" : ""}`}>
                         <StageTag step={e.step} />
                         <MeetingIcon type={e.meetingType} />
                         <span className={`truncate ${failed ? "line-through" : ""}`}>{e.company}</span>
@@ -159,7 +159,7 @@ function DayColumn({ day, events, nowMinutes, onSlotClick, onEventClick }: { day
           <button
             key={ev.id}
             onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
-            title={`${fmtTime(ev.startTime)} ${ev.company}`}
+            title={`${fmtTime(ev.startTime)} ${ev.company}${failed && ev.statusNote ? ` — failed: ${ev.statusNote}` : ""}`}
             className={`absolute overflow-hidden rounded px-1 py-0.5 text-left text-[11px] leading-tight text-white ${c.bg} ${failed ? "opacity-60" : ""}`}
             style={{ top, height, left: `calc(${(lane / count) * 100}% + 1px)`, width: `calc(${(1 / count) * 100}% - 2px)` }}
           >

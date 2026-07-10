@@ -16,7 +16,7 @@ function blankInput(day: string, time: string | undefined, timeZone: string): Ev
   return {
     company: "", role: null, date: day, endDate: null,
     allDay: false, startTime: start, endTime: addHour(start), timeZone,
-    note: null, meetingType: "video", meetingLink: null, step: null, status: null, color: "sky", profileId: null,
+    note: null, meetingType: "video", meetingLink: null, step: null, status: null, statusNote: null, color: "sky", profileId: null,
   };
 }
 
@@ -65,7 +65,7 @@ export function CalendarApp({ events, profiles, today }: { events: CalEvent[]; p
     setDraft({
       mode: "edit",
       event: ev,
-      init: { company: ev.company, role: ev.role, date: ev.date, endDate: null, allDay: false, startTime: ev.startTime ?? "09:00", endTime: ev.endTime ?? addHour(ev.startTime ?? "09:00"), timeZone: displayTz, note: ev.note, meetingType: ev.meetingType, meetingLink: ev.meetingLink, step: ev.step, status: ev.status, color: ev.color, profileId: ev.profileId },
+      init: { company: ev.company, role: ev.role, date: ev.date, endDate: null, allDay: false, startTime: ev.startTime ?? "09:00", endTime: ev.endTime ?? addHour(ev.startTime ?? "09:00"), timeZone: displayTz, note: ev.note, meetingType: ev.meetingType, meetingLink: ev.meetingLink, step: ev.step, status: ev.status, statusNote: ev.statusNote, color: ev.color, profileId: ev.profileId },
     });
 
   return (
