@@ -16,7 +16,7 @@ export default async function PlannerPage() {
     id: e.id, profileId: e.profileId, company: e.company ?? e.title, role: e.role, date: e.date, endDate: e.endDate,
     allDay: e.allDay, startTime: e.startTime, endTime: e.endTime, timeZone: e.timeZone, note: e.note,
     meetingType: e.meetingType === "phone" || e.meetingType === "video" ? e.meetingType : null,
-    meetingLink: e.meetingLink, step: e.step, color: e.color,
+    meetingLink: e.meetingLink, step: e.step, status: e.status, color: e.color,
   }));
   const profs = profiles.map((p) => ({ id: p.id, name: p.fullName || p.label, phone: p.phone }));
 

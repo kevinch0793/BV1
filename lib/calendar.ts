@@ -19,6 +19,7 @@ export type CalEvent = {
   meetingType: MeetingType; // interview call type
   meetingLink: string | null; // video link, when meetingType = "video"
   step: string | null; // interview stage id (see EVENT_STAGES)
+  status: string | null; // interview outcome id (see EVENT_OUTCOMES)
   color: string;
 };
 
@@ -35,6 +36,7 @@ export type EventInput = {
   meetingType: MeetingType;
   meetingLink: string | null;
   step: string | null;
+  status: string | null;
   color: string;
   profileId: string | null;
 };
@@ -49,6 +51,15 @@ export const EVENT_STAGES = [
   { id: "offer", label: "Offer", badge: "bg-rose-100 text-rose-700" },
 ];
 export const stageOf = (id: string | null | undefined) => EVENT_STAGES.find((s) => s.id === id) ?? null;
+
+// Interview OUTCOME per event. advanced (moved to next stage) → green check;
+// pending (still waiting on feedback) → amber clock; failed → strikethrough.
+export const EVENT_OUTCOMES = [
+  { id: "advanced", label: "Advanced" },
+  { id: "pending", label: "Pending" },
+  { id: "failed", label: "Failed" },
+];
+export const outcomeOf = (id: string | null | undefined) => EVENT_OUTCOMES.find((o) => o.id === id) ?? null;
 
 export const EVENT_COLORS = [
   { id: "sky", name: "Blue", bg: "bg-sky-500", soft: "bg-sky-100 text-sky-800", border: "border-sky-500" },

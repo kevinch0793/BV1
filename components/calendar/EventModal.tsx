@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation";
 import { EVENT_COLORS, EVENT_STAGES, longDate, type CalEvent, type EventInput } from "@/lib/calendar";
 import { createEvent, updateEvent, deleteEvent } from "@/app/actions/calendar";
 import { PhoneIcon, VideoIcon } from "@/components/calendar/MeetingIcon";
+import { CheckIcon, ClockIcon } from "@/components/calendar/StatusIcon";
+
+const OUTCOME_OPTS: { id: string | null; label: string; active: string; icon?: React.ReactNode }[] = [
+  { id: null, label: "None", active: "bg-neutral-700 text-white" },
+  { id: "advanced", label: "Advanced", active: "bg-emerald-600 text-white", icon: <CheckIcon /> },
+  { id: "pending", label: "Pending", active: "bg-amber-500 text-white", icon: <ClockIcon /> },
+  { id: "failed", label: "Failed", active: "bg-rose-600 text-white" },
+];
 
 export type Draft = { mode: "create" | "edit"; event?: CalEvent; init: EventInput };
 
@@ -66,6 +74,21 @@ export function EventModal({ draft, profiles, onClose }: { draft: Draft; profile
                 <option key={s.id} value={s.id}>{s.label}</option>
               ))}
             </select>
+          </Field>
+
+          <Field label="Outcome">
+            <div className="flex w-fit flex-wrap gap-1 rounded-lg border border-neutral-200 p-1">
+              {OUTCOME_OPTS.map((o) => (
+                <button
+                  key={o.label}
+                  onClick={() => set("status", o.id)}
+                  className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium ${f.status === o.id ? o.active : "text-neutral-600 hover:bg-neutral-100"}`}
+                >
+                  {o.icon}
+                  {o.label}
+                </button>
+              ))}
+            </div>
           </Field>
 
           {/* Interview meeting type + its body (phone -> profile's number, video -> link) */}

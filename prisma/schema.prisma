@@ -66,6 +66,7 @@ model CalendarEvent {
   meetingType String? // "phone" | "video" (interview events)
   meetingLink String? // video meeting URL, when meetingType = "video"
   step      String? // interview stage: intro | hr | tech | onsite | final | offer
+  status    String? // interview outcome: advanced | pending | failed (null = unset)
   color     String   @default("sky")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

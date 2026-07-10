@@ -2,6 +2,7 @@
 
 import { monthMatrix, parseYmd, onDay, cmpEvent, colorOf, fmtTime, WEEKDAYS, type CalEvent } from "@/lib/calendar";
 import { StageTag } from "@/components/calendar/StageTag";
+import { StatusIcon } from "@/components/calendar/StatusIcon";
 import { MeetingIcon } from "@/components/calendar/MeetingIcon";
 
 export function MonthGrid({
@@ -70,23 +71,26 @@ export function MonthGrid({
 
 function MonthChip({ ev, onClick }: { ev: CalEvent; onClick: () => void }) {
   const c = colorOf(ev.color);
+  const failed = ev.status === "failed";
   const stop = (e: React.MouseEvent) => { e.stopPropagation(); onClick(); };
   if (ev.allDay) {
     return (
-      <button onClick={stop} title={ev.company} className={`flex w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-white ${c.bg}`}>
+      <button onClick={stop} title={ev.company} className={`flex w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-white ${c.bg} ${failed ? "opacity-60" : ""}`}>
+        <StatusIcon status={ev.status} />
         <StageTag step={ev.step} />
         <MeetingIcon type={ev.meetingType} />
-        <span className="truncate">{ev.company}</span>
+        <span className={`truncate ${failed ? "line-through" : ""}`}>{ev.company}</span>
       </button>
     );
   }
   return (
-    <button onClick={stop} title={`${fmtTime(ev.startTime)} ${ev.company}`} className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] text-neutral-700 hover:bg-neutral-100">
+    <button onClick={stop} title={`${fmtTime(ev.startTime)} ${ev.company}`} className={`flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] text-neutral-700 hover:bg-neutral-100 ${failed ? "opacity-60" : ""}`}>
       <span className={`h-2 w-2 shrink-0 rounded-full ${c.bg}`} />
       {ev.startTime && <span className="shrink-0 text-neutral-500">{fmtTime(ev.startTime)}</span>}
+      <StatusIcon status={ev.status} />
       <StageTag step={ev.step} />
       <MeetingIcon type={ev.meetingType} />
-      <span className="truncate">{ev.company}</span>
+      <span className={`truncate ${failed ? "line-through" : ""}`}>{ev.company}</span>
     </button>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { weekDays, parseYmd, dowOf, onDay, minutesOf, fmtTime, colorOf, secondaryHourLabels, tzShort, localTimeZone, nowInTz, WEEKDAYS, type CalEvent } from "@/lib/calendar";
 import { StageTag } from "@/components/calendar/StageTag";
+import { StatusIcon } from "@/components/calendar/StatusIcon";
 import { MeetingIcon } from "@/components/calendar/MeetingIcon";
 
 const HOUR_H = 44; // px per hour row
@@ -82,11 +83,13 @@ export function WeekGrid({
                 <div key={day} className="min-h-[26px] space-y-0.5 border-r border-neutral-100 p-0.5 last:border-r-0">
                   {events.filter((e) => e.allDay && onDay(e, day)).map((e) => {
                     const c = colorOf(e.color);
+                    const failed = e.status === "failed";
                     return (
-                      <button key={e.id} onClick={() => onEventClick(e)} title={e.company} className={`flex w-full items-center gap-1 truncate rounded px-1 text-left text-[11px] font-medium text-white ${c.bg}`}>
+                      <button key={e.id} onClick={() => onEventClick(e)} title={e.company} className={`flex w-full items-center gap-1 truncate rounded px-1 text-left text-[11px] font-medium text-white ${c.bg} ${failed ? "opacity-60" : ""}`}>
+                        <StatusIcon status={e.status} />
                         <StageTag step={e.step} />
                         <MeetingIcon type={e.meetingType} />
-                        <span className="truncate">{e.company}</span>
+                        <span className={`truncate ${failed ? "line-through" : ""}`}>{e.company}</span>
                       </button>
                     );
                   })}
@@ -153,15 +156,16 @@ function DayColumn({ day, events, nowMinutes, onSlotClick, onEventClick }: { day
         const top = (start / 60) * HOUR_H;
         const height = Math.max(18, ((end - start) / 60) * HOUR_H - 2);
         const c = colorOf(ev.color);
+        const failed = ev.status === "failed";
         return (
           <button
             key={ev.id}
             onClick={(e) => { e.stopPropagation(); onEventClick(ev); }}
             title={`${fmtTime(ev.startTime)} ${ev.company}`}
-            className={`absolute overflow-hidden rounded px-1 py-0.5 text-left text-[11px] leading-tight text-white ${c.bg}`}
+            className={`absolute overflow-hidden rounded px-1 py-0.5 text-left text-[11px] leading-tight text-white ${c.bg} ${failed ? "opacity-60" : ""}`}
             style={{ top, height, left: `calc(${(lane / count) * 100}% + 1px)`, width: `calc(${(1 / count) * 100}% - 2px)` }}
           >
-            <div className="flex items-center gap-1 truncate"><StageTag step={ev.step} /><MeetingIcon type={ev.meetingType} /><span className="truncate font-medium">{ev.company}</span></div>
+            <div className="flex items-center gap-1 truncate"><StatusIcon status={ev.status} /><StageTag step={ev.step} /><MeetingIcon type={ev.meetingType} /><span className={`truncate font-medium ${failed ? "line-through" : ""}`}>{ev.company}</span></div>
             {height > 28 && <div className="truncate opacity-90">{fmtTime(ev.startTime)}</div>}
           </button>
         );
