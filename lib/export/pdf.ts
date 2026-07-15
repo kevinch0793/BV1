@@ -134,10 +134,27 @@ export async function renderPageText(url: string): Promise<string | null> {
       else req.continue().catch(() => {});
     });
     // domcontentloaded is fast and (unlike networkidle2) won't hang for the full
-    // timeout on pages with long-lived connections; then wait briefly for the
-    // client-rendered JD to populate. Worst case ~18s vs the old 25s+.
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 12000 });
-    await page.waitForFunction(() => (document.body?.innerText || "").length > 600, { timeout: 6000 }).catch(() => {});
+    // timeout on pages with long-lived connections; then wait for the client-
+    // rendered JD to actually populate. Heavy SPA communities (Salesforce Aura,
+    // etc.) boot a shell first and load the JD by XHR a few seconds later, so we
+    // wait for JD-ish content (keywords or a body well past the shell), not just
+    // "some text". Resolves fast when the JD is already there; up to ~14s for the
+    // slow ones. Bounded by MAX_RENDERS, so a wide batch never stacks these up.
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page
+      .waitForFunction(
+        () => {
+          const t = document.body?.innerText || "";
+          if (t.length < 600) return false;
+          const l = t.toLowerCase();
+          const kw = ["responsibilit", "qualificat", "requirement", "what you", "you will", "experience", "about the role", "who you"].filter(
+            (w) => l.includes(w),
+          ).length;
+          return t.length > 1500 || kw >= 2;
+        },
+        { timeout: 14000 },
+      )
+      .catch(() => {});
     const text: string = await page.evaluate(() => {
       const tidy = (s: string) => (s || "").replace(/[ \t]+/g, " ").replace(/\n\s*\n\s*\n+/g, "\n\n").trim();
       for (const el of Array.from(document.querySelectorAll('script[type="application/ld+json"]'))) {

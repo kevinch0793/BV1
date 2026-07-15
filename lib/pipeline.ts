@@ -182,35 +182,28 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
     const company = fields.company?.trim() || "";
     const role = fields.role?.trim() || "";
 
-    // Not enough of a JD to tailor on. If we still read a company/role (a real
-    // posting or an apply-only form), keep it as "needs_jd" — shown as "Fetched"
-    // so the user can paste the JD manually — and DON'T auto-tailor a junk resume
-    // off an empty JD. Only when we got nothing usable at all is it a real failure.
+    // We reached the page but there isn't enough of a JD to tailor on (a JS-gated
+    // board, an apply-only form, or a heavy SPA that never rendered the JD). Keep
+    // it as "needs_jd" — shown as "Fetched" with a Paste JD button — instead of
+    // failing, and DON'T auto-tailor a junk resume off an empty JD. A genuinely
+    // unreachable page already failed above (findJobDescription ok:false). Store
+    // whatever company/role we could read (possibly empty) so the row is
+    // identifiable while the user pastes the JD.
     if (desc.length < 200) {
-      if (company || role) {
-        await prisma.jobPosting.update({
-          where: { id: jobId },
-          data: {
-            company: company || null,
-            role: role || null,
-            location: fields.location || null,
-            workplace: fields.workplace || null,
-            descriptionRaw: null,
-            descriptionParsed: { description: "", requirements: fields.requirements ?? [], atsSkills: null },
-            status: "needs_jd",
-            error: null,
-          },
-        });
-        return false; // don't tailor — waits for a pasted JD
-      }
       await prisma.jobPosting.update({
         where: { id: jobId },
         data: {
-          status: "failed",
-          error: "Couldn't read this page (it may be login-gated or blocked). Paste the job description instead.",
+          company: company || null,
+          role: role || null,
+          location: fields.location || null,
+          workplace: fields.workplace || null,
+          descriptionRaw: null,
+          descriptionParsed: { description: "", requirements: fields.requirements ?? [], atsSkills: null },
+          status: "needs_jd",
+          error: null,
         },
       });
-      return false;
+      return false; // don't tailor — waits for a pasted JD
     }
 
     if (process.env.LLM_DEBUG) console.log(`[pipeline] fetch job ${jobId} scrape=${scrapeMs}ms extract=${Date.now() - te}ms`);
