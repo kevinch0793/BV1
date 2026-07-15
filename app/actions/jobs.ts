@@ -9,6 +9,22 @@ import { normalizeUrl, normalizeUrls } from "@/lib/url";
 
 export type JobActionResult = { ok: boolean; error?: string; needsPaste?: boolean };
 
+/** Inline-edit a job's company / role — manual correction, e.g. for rows the
+ *  fetcher couldn't read (needs_jd). Only the provided fields are touched. */
+export async function updateJobFields(
+  jobId: string,
+  fields: { company?: string | null; role?: string | null },
+): Promise<{ ok: boolean }> {
+  await assertOwnsJob(jobId);
+  const data: { company?: string | null; role?: string | null } = {};
+  if ("company" in fields) data.company = (fields.company ?? "").trim().slice(0, 200) || null;
+  if ("role" in fields) data.role = (fields.role ?? "").trim().slice(0, 200) || null;
+  if (!Object.keys(data).length) return { ok: false };
+  const updated = await prisma.jobPosting.update({ where: { id: jobId }, data, select: { profileId: true } });
+  revalidatePath(`/profiles/${updated.profileId}/dashboard`);
+  return { ok: true };
+}
+
 /** Bulk-add job URLs as pending entries (no scraping yet). Duplicates — within
  *  the batch or already on this profile — are skipped, not re-added. */
 export async function addJobUrls(

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addJobUrls, setJobFromText, deleteJob, deleteJobs, setApplyStatus, type ApplyStatus } from "@/app/actions/jobs";
+import { addJobUrls, setJobFromText, deleteJob, deleteJobs, setApplyStatus, updateJobFields, type ApplyStatus } from "@/app/actions/jobs";
 import { startPipeline, jobStatuses, ensurePipelineRunning, retryJob, retryJobs, type LiveJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResumeNative } from "@/lib/exportClient";
@@ -101,6 +101,7 @@ export function PipelineDashboard({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [retrying, setRetrying] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [copied, setCopied] = useState(false);
   const lastClickedRef = useRef<string | null>(null); // anchor for shift-click range
 
   // Re-sort whenever job data changes (incl. after tailoring status updates from
@@ -207,6 +208,34 @@ export function PipelineDashboard({
       setRemoving(false);
     }
   }
+  // Copy the selected jobs' URLs (one per line) to the clipboard. Rows without a
+  // URL (pasted-from-text jobs) are skipped.
+  async function copySelectedUrls() {
+    const urls = sortedJobs.filter((j) => selected.has(j.id)).map((j) => j.url).filter((u): u is string => !!u);
+    if (!urls.length) return;
+    const text = urls.join("\n");
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+      else throw new Error("clipboard unavailable");
+    } catch {
+      // Fallback for non-secure contexts / older browsers.
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand("copy");
+      } catch {
+        /* ignore */
+      }
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
 
   return (
     <div className="space-y-6">
@@ -273,6 +302,14 @@ export function PipelineDashboard({
                 className="rounded-md bg-sky-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-800 disabled:opacity-50"
               >
                 {retrying ? "Retrying…" : "Retry fetch"}
+              </button>
+              <button
+                onClick={copySelectedUrls}
+                disabled={retrying || removing}
+                title="Copy the selected jobs' URLs to the clipboard"
+                className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-50"
+              >
+                {copied ? "Copied ✓" : "Copy URLs"}
               </button>
               <button
                 onClick={removeSelected}
@@ -444,10 +481,16 @@ function JobRow({
           </span>
         </td>
         <td className="px-4 py-3 font-medium text-neutral-900">
-          <div className="max-w-[16rem] break-words">{job.role || <span className="text-neutral-400">—</span>}</div>
+          <div className="max-w-[16rem]">
+            <EditableField value={job.role} onSave={(v) => updateJobFields(job.id, { role: v }).then(onRefresh)} />
+          </div>
           {stage === "failed" && job.error && <p className="mt-0.5 max-w-[16rem] text-xs font-normal break-words text-red-600">{job.error}</p>}
         </td>
-        <td className="px-4 py-3 text-neutral-700"><div className="max-w-[12rem] break-words">{job.company || <span className="text-neutral-400">—</span>}</div></td>
+        <td className="px-4 py-3 text-neutral-700">
+          <div className="max-w-[12rem]">
+            <EditableField value={job.company} onSave={(v) => updateJobFields(job.id, { company: v }).then(onRefresh)} />
+          </div>
+        </td>
         <td className="px-4 py-3 text-neutral-700"><LocationCell workplace={job.workplace} location={job.location} /></td>
         <td className="px-4 py-3">
           {job.url ? (
@@ -547,6 +590,73 @@ function JobRow({
         <ResumePreviewModal tailoredId={job.tailoredId} onClose={() => setShowPreview(false)} />
       )}
     </>
+  );
+}
+
+// Click-to-edit text cell for Role / Company. Shows the value (or a "—"
+// placeholder) as a button; clicking turns it into an input that saves on Enter
+// or blur and cancels on Escape. Empty cells are just as editable, so the user
+// can fill in a role/company the fetcher couldn't read.
+function EditableField({ value, onSave }: { value: string | null; onSave: (v: string) => void | Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+  const [saving, setSaving] = useState(false);
+  const ref = useRef<HTMLInputElement>(null);
+
+  // Re-sync the draft to the latest server value whenever we're not editing.
+  useEffect(() => {
+    if (!editing) setDraft(value ?? "");
+  }, [value, editing]);
+  useEffect(() => {
+    if (editing) {
+      ref.current?.focus();
+      ref.current?.select();
+    }
+  }, [editing]);
+
+  async function commit() {
+    setEditing(false);
+    const v = draft.trim();
+    if (v === (value ?? "").trim()) return; // unchanged — skip the write
+    setSaving(true);
+    try {
+      await onSave(v);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={ref}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            setDraft(value ?? "");
+            setEditing(false);
+          }
+        }}
+        placeholder="Type…"
+        className="w-full rounded border border-sky-400 px-1.5 py-1 text-sm text-neutral-900 focus:outline-none focus:ring-1 focus:ring-sky-500"
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      title="Click to edit"
+      className="w-full break-words rounded px-1 py-0.5 text-left hover:bg-neutral-100"
+    >
+      {value ? value : <span className="text-neutral-400">—</span>}
+      {saving && <span className="ml-1 align-middle text-[10px] font-normal text-neutral-400">saving…</span>}
+    </button>
   );
 }
 
