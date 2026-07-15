@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
 import { requireClient } from "@/lib/auth";
 import { assertOwnsProfile, assertOwnsJob } from "@/lib/owner";
-import { startPipeline as start, isPipelineRunning, markRenderRetry } from "@/lib/pipeline";
+import { startPipeline as start, isPipelineRunning } from "@/lib/pipeline";
 import { normalizeUrl } from "@/lib/url";
 
 /**
@@ -110,9 +110,6 @@ export async function ensurePipelineRunning(profileId: string): Promise<{ runnin
 /** Re-queue a failed job for another fetch+tailor pass. */
 export async function retryJob(jobId: string): Promise<void> {
   const clientId = await assertOwnsJob(jobId);
-  // A manual retry may be for a JS-only page, so let this one job's next fetch use
-  // the (slow) headless-Chrome render fallback that batch runs skip.
-  markRenderRetry(jobId);
   await prisma.jobPosting.updateMany({
     where: { id: jobId, profile: { clientId } },
     data: { status: "pending", error: null },
@@ -137,7 +134,6 @@ export async function retryJobs(jobIds: string[]): Promise<{ retried: number }> 
     select: { id: true, url: true, profileId: true },
   });
   for (const j of jobs) {
-    markRenderRetry(j.id);
     const fixed = j.url ? normalizeUrl(j.url) : null; // repair a mangled URL if we can
     await prisma.jobPosting.update({
       where: { id: j.id },

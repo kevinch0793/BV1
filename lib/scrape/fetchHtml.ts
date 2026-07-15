@@ -23,9 +23,6 @@ const JD_WORDS = [
   "the role",
 ];
 
-const GOOD_LINK = ["job", "jobs", "career", "careers", "position", "opening", "vacancy", "role", "description", "posting", "requisition", "/req", "detail", "listing"];
-const BAD_LINK = ["login", "signin", "sign-in", "privacy", "cookie", "terms", "blog", "press", "contact", "facebook", "twitter", "linkedin.com", "instagram"];
-
 function htmlToText(html: string): string {
   if (!html) return "";
   return cheerio
@@ -110,37 +107,7 @@ function looksLikeJD(text: string): boolean {
   return JD_WORDS.filter((w) => lower.includes(w)).length >= 3;
 }
 
-function scoreLink(href: string, text: string): number {
-  const s = `${href} ${text}`.toLowerCase();
-  if (BAD_LINK.some((b) => s.includes(b))) return -1;
-  let score = 0;
-  for (const g of GOOD_LINK) if (s.includes(g)) score += 2;
-  if (/\/[0-9a-f-]{16,}/i.test(href)) score += 2; // long id (uuid etc.)
-  if (/\/\d{4,}/.test(href)) score += 2;
-  return score;
-}
-
-function collectLinks($: cheerio.CheerioAPI, baseUrl: string): { href: string; text: string }[] {
-  const origin = new URL(baseUrl).origin;
-  const out: { href: string; text: string }[] = [];
-  const seen = new Set<string>();
-  $("a[href]").each((_, a) => {
-    const raw = $(a).attr("href");
-    if (!raw || raw.startsWith("#") || /^(mailto:|tel:|javascript:)/i.test(raw)) return;
-    let abs: string;
-    try {
-      abs = new URL(raw, baseUrl).toString();
-    } catch {
-      return;
-    }
-    if (new URL(abs).origin !== origin || seen.has(abs) || abs === baseUrl) return;
-    seen.add(abs);
-    out.push({ href: abs, text: $(a).text().trim().slice(0, 100) });
-  });
-  return out.slice(0, 300);
-}
-
-type Page = { ok: true; jd: string | null; text: string; links: { href: string; text: string }[] } | { ok: false; error: string };
+type Page = { ok: true; jd: string | null; text: string } | { ok: false; error: string };
 
 async function fetchPage(url: string): Promise<Page> {
   try {
@@ -151,7 +118,7 @@ async function fetchPage(url: string): Promise<Page> {
     });
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
     const $ = cheerio.load(await res.text());
-    return { ok: true, jd: jsonLdJobText($), text: bodyText($), links: collectLinks($, url) };
+    return { ok: true, jd: jsonLdJobText($), text: bodyText($) };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
@@ -275,91 +242,129 @@ async function tryAdpWorkforceNow(url: string): Promise<string | null> {
   }
 }
 
-/** Build extra URLs to try: drop an /application or /apply suffix segment. */
-function siblingUrls(url: string): string[] {
+/**
+ * SmartRecruiters powers many boards and exposes a public postings API that
+ * returns the full JD as JSON even when the public page is bot-blocked (HTTP 403)
+ * or a JS-only apply form. The posting id is the UUID in the URL
+ * (…/publication/<uuid>) or the leading numeric id of a standard "<id>-slug" path.
+ */
+async function trySmartRecruiters(url: string): Promise<string | null> {
+  let u: URL;
   try {
-    const u = new URL(url);
-    const trimmed = u.pathname.replace(/\/(application|apply)\/?$/i, "");
-    if (trimmed !== u.pathname) {
-      const v = new URL(url);
-      v.pathname = trimmed;
-      return [v.toString()];
-    }
+    u = new URL(url);
   } catch {
-    /* ignore */
+    return null;
   }
-  return [];
+  if (!/(^|\.)smartrecruiters\.com$/i.test(u.hostname)) return null;
+  const segs = u.pathname.split("/").filter(Boolean);
+  // Company: the segment after "company", else the first path segment.
+  const ci = segs.indexOf("company");
+  const company = ci !== -1 ? segs[ci + 1] : segs[0];
+  // Posting id: a UUID anywhere in the path, else a leading long numeric id.
+  const uuid = segs.map((s) => s.match(/[0-9a-f]{8}-[0-9a-f-]{20,}/i)?.[0]).find(Boolean);
+  const numeric = segs.map((s) => s.match(/^(\d{6,})/)?.[1]).find(Boolean);
+  const id = uuid || numeric;
+  if (!company || !id) return null;
+
+  try {
+    const res = await fetch(
+      `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(company)}/postings/${encodeURIComponent(id)}`,
+      { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(12000) },
+    );
+    if (!res.ok) return null;
+    const j = (await res.json()) as Record<string, unknown>;
+    const sections = ((j.jobAd as Record<string, unknown> | undefined)?.sections ?? {}) as Record<string, { text?: string }>;
+    const body = ["companyDescription", "jobDescription", "qualifications", "additionalInformation"]
+      .map((k) => htmlToText(String(sections[k]?.text ?? "")))
+      .filter(Boolean)
+      .join("\n\n");
+    if (body.length < 100) return null;
+    const title = typeof j.name === "string" ? j.name : "";
+    const companyName = (j.company as Record<string, unknown> | undefined)?.name;
+    const location = (j.location as Record<string, unknown> | undefined)?.fullLocation;
+    const header = [
+      title && `Title: ${title}`,
+      typeof companyName === "string" && companyName ? `Company: ${companyName}` : "",
+      typeof location === "string" && location ? `Location: ${location}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return (header ? `${header}\n\n` : "") + body;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Resolve a job URL to its description text. Priority:
- *  1. schema.org JSON-LD JobPosting on the page (works for JS-rendered ATS like
- *     Ashby/Greenhouse/Lever even when the body is empty).
- *  2. The page body text, if it reads like a JD.
- *  3. Sibling URLs (e.g. strip /application) and the best same-site links, one hop.
- *  4. Landing body text as a last resort.
+ * iCIMS job pages serve a tiny JS shell at the public URL, but the SAME URL with
+ * `in_iframe=1` returns the fully-populated posting HTML the iframe renders (the
+ * JD, in schema.org JSON-LD or plain body text). One request, same job.
+ */
+async function tryIcims(url: string): Promise<string | null> {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  if (!/(^|\.)icims\.com$/i.test(u.hostname)) return null;
+  if (u.searchParams.get("in_iframe") === "1") return null; // already the iframe URL — let the normal flow read it
+  u.searchParams.set("in_iframe", "1");
+  const page = await fetchPage(u.toString());
+  if (!page.ok) return null;
+  if (page.jd) return page.jd;
+  if (looksLikeJD(page.text)) return page.text;
+  return null;
+}
+
+/**
+ * Resolve a job URL to its description text — the given page only, no crawling.
+ * Priority:
+ *  1. Site-specific handlers (canonical public API / iframe endpoint for the SAME
+ *     job) — fast and precise for bot-blocked / JS-only ATS boards.
+ *  2. schema.org JSON-LD JobPosting on the page.
+ *  3. The page body text, if it reads like a JD.
+ *  4. Headless render of the FIRST page (runs JS) — reads exactly what a browser
+ *     shows, so JS-rendered boards (Ashby/Phenom/etc.) resolve. Bounded by
+ *     MAX_RENDERS in lib/export/pdf.ts so wide batches don't overload the box.
+ *  5. If the page was reached but has no JD, return its best text anyway so the
+ *     caller can still extract company/role (→ "needs JD", a manual paste) instead
+ *     of failing. Only a genuinely unreachable page is a hard failure.
  */
 export async function findJobDescription(url: string, opts: { render?: boolean } = {}): Promise<FetchResult> {
-  // Site-specific handlers first (JS-only / bot-blocked boards with a public API).
-  for (const handler of [tryGreenhouse, tryAdpWorkforceNow]) {
+  // Site-specific handlers first (JS-only / bot-blocked boards with a public API
+  // or iframe endpoint). Each resolves the SAME job from its canonical source — a
+  // single request, not a crawl to other pages.
+  for (const handler of [tryGreenhouse, tryAdpWorkforceNow, trySmartRecruiters, tryIcims]) {
     const text = await handler(url);
     if (text) return { ok: true, text, sourceUrl: url };
   }
 
   const page = await fetchPage(url);
-  if (!page.ok) return { ok: false, error: `Could not reach the page: ${page.error}` };
-
-  if (page.jd) return { ok: true, text: page.jd, sourceUrl: url };
-  if (looksLikeJD(page.text)) return { ok: true, text: page.text, sourceUrl: url };
-
-  // Try sibling URLs first (apply → posting), then ranked same-site links.
-  const ranked = collectLinksToTry(page, url);
-  const results = await Promise.allSettled(ranked.map((u) => fetchPage(u)));
-
-  let best: { text: string; sourceUrl: string } | null = null;
-  let bestRank = -1;
-  ranked.forEach((u, i) => {
-    const r = results[i];
-    if (r.status !== "fulfilled" || !r.value.ok) return;
-    const candidate = r.value.jd ?? r.value.text;
-    if (!candidate) return;
-    const rank = (r.value.jd || looksLikeJD(candidate) ? 1_000_000 : 0) + candidate.length;
-    if (rank > bestRank) {
-      bestRank = rank;
-      best = { text: candidate, sourceUrl: u };
-    }
-  });
-
-  if (best) {
-    const b = best as { text: string; sourceUrl: string };
-    if (looksLikeJD(b.text) || b.text.length > page.text.length * 1.2) return { ok: true, ...b };
+  if (page.ok) {
+    if (page.jd) return { ok: true, text: page.jd, sourceUrl: url };
+    if (looksLikeJD(page.text)) return { ok: true, text: page.text, sourceUrl: url };
   }
 
-  // JS-rendered boards (e.g. Zoho Recruit) build the JD client-side, so it never
-  // appears in the static HTML. Render the page with headless Chrome and read the
-  // JD back. This is slow (headless Chrome), so batch fetches opt out
-  // (`render: false`) and it runs only on a manual retry — most jobs never pay it.
-  if (opts.render !== false) {
-    const rendered = await renderPageText(url).catch(() => null);
-    if (rendered && (looksLikeJD(rendered) || rendered.length >= 600)) return { ok: true, text: rendered, sourceUrl: url };
-  }
+  // Static HTML had no JD (common for JS-rendered ATS). Render the FIRST page with
+  // headless Chrome and read the JD back. Only this URL is loaded — no link
+  // following. Bounded by MAX_RENDERS (lib/export/pdf.ts).
+  let rendered: string | null = null;
+  if (opts.render !== false) rendered = await renderPageText(url).catch(() => null);
+  if (rendered && (looksLikeJD(rendered) || rendered.length >= 600)) return { ok: true, text: rendered, sourceUrl: url };
 
-  // Last resort: accept a reasonably-sized page. A tiny page (~200 chars) is a
-  // stub/login/JS shell, not a JD — fail it so the user pastes the text.
-  if (page.text.length >= 400) return { ok: true, text: page.text, sourceUrl: url };
+  // Still no recognizable JD. If we at least REACHED a page, hand back its best
+  // text so the extractor can still pull company/role — the caller marks such a
+  // job "needs JD" (manual paste) rather than failing it. Only a page we couldn't
+  // reach at all (network/HTTP error, nothing rendered) is a genuine failure.
+  const candidates = [rendered ?? "", page.ok ? page.text : ""].filter((t) => t.length > 0);
+  const best = candidates.sort((a, b) => b.length - a.length)[0];
+  if (best) return { ok: true, text: best, sourceUrl: url };
+
   return {
     ok: false,
-    error: "Couldn't find a job description on that page (it may be login-gated or JavaScript-rendered). Paste the text instead.",
+    error: page.ok
+      ? "Couldn't find a job description on that page (it may be login-gated or JavaScript-rendered). Paste the text instead."
+      : `Could not reach the page: ${page.error}`,
   };
-}
-
-function collectLinksToTry(page: Extract<Page, { ok: true }>, url: string): string[] {
-  const siblings = siblingUrls(url);
-  const links = page.links
-    .map((l) => ({ ...l, score: scoreLink(l.href, l.text) }))
-    .filter((l) => l.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 6)
-    .map((l) => l.href);
-  return [...new Set([...siblings, ...links])];
 }

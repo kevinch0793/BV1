@@ -32,6 +32,9 @@ const STAGE: Record<string, { label: string; style: string }> = {
   pending: { label: "Not fetched", style: "bg-neutral-100 text-neutral-600" },
   fetching: { label: "Fetching…", style: "bg-sky-100 text-sky-700" },
   fetched: { label: "Fetched", style: "bg-amber-100 text-amber-700" },
+  // Reached a real posting but no usable JD (JS-gated / apply-only form). Shown as
+  // "Fetched"; the row offers Paste JD and does NOT auto-tailor until a JD is added.
+  needs_jd: { label: "Fetched", style: "bg-amber-100 text-amber-700" },
   tailoring: { label: "Tailoring…", style: "bg-violet-100 text-violet-700" },
   tailored: { label: "Tailored", style: "bg-emerald-100 text-emerald-700" },
   failed: { label: "Failed", style: "bg-red-100 text-red-700" },
@@ -39,7 +42,7 @@ const STAGE: Record<string, { label: string; style: string }> = {
 
 function stageKey(job: Job): keyof typeof STAGE {
   if (job.tailoredId) return "tailored";
-  if (["fetching", "tailoring", "fetched", "failed"].includes(job.status)) return job.status;
+  if (["fetching", "tailoring", "fetched", "needs_jd", "failed"].includes(job.status)) return job.status;
   return "pending";
 }
 
@@ -373,7 +376,7 @@ function JobRow({
   const stage = stageKey(job);
   const st = STAGE[stage];
   const busy = stage === "fetching" || stage === "tailoring";
-  const canPaste = stage === "pending" || stage === "failed";
+  const canPaste = stage === "pending" || stage === "failed" || stage === "needs_jd";
 
   // Manual status change from the dropdown: a manual "applied" defaults to
   // generic (we don't assume the tailored resume was used).

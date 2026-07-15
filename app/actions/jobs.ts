@@ -52,12 +52,43 @@ export async function fetchJob(jobId: string): Promise<JobActionResult> {
 
   try {
     const fields = await extractJobFields(fetched.text);
+    const desc = (fields.description ?? "").trim();
+    const company = fields.company?.trim() || "";
+    const role = fields.role?.trim() || "";
+
+    // No usable JD. With a company/role (a real posting or an apply-only form),
+    // keep it as "needs_jd" — shown as "Fetched" so the user can paste the JD;
+    // otherwise it's a genuine failure.
+    if (desc.length < 200) {
+      if (company || role) {
+        await prisma.jobPosting.update({
+          where: { id: jobId },
+          data: {
+            company: company || null,
+            role: role || null,
+            location: fields.location || null,
+            workplace: fields.workplace || null,
+            descriptionRaw: null,
+            descriptionParsed: { description: "", requirements: fields.requirements ?? [] },
+            status: "needs_jd",
+            error: null,
+          },
+        });
+        revalidatePath(`/profiles/${job.profileId}/dashboard`);
+        return { ok: true };
+      }
+      const error = "Couldn't read this page (it may be login-gated or blocked). Paste the job description instead.";
+      await prisma.jobPosting.update({ where: { id: jobId }, data: { status: "failed", error } });
+      return { ok: false, error, needsPaste: true };
+    }
+
     await prisma.jobPosting.update({
       where: { id: jobId },
       data: {
         company: fields.company,
         role: fields.role,
         location: fields.location,
+        workplace: fields.workplace,
         descriptionRaw: fetched.text.slice(0, 20000),
         descriptionParsed: { description: fields.description, requirements: fields.requirements },
         status: "fetched",

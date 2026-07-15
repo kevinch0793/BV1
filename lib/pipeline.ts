@@ -114,13 +114,6 @@ async function withSlot<T>(profileId: string, fn: () => Promise<T>): Promise<T> 
   }
 }
 
-// Jobs whose NEXT fetch should try the (slow) headless-Chrome render — set only on
-// a manual retry, so batch runs stay fast and un-fetchable JS pages fail quickly.
-const renderHints = new Set<string>();
-export function markRenderRetry(jobId: string): void {
-  renderHints.add(jobId);
-}
-
 async function loop(profileId: string): Promise<void> {
   const profile = await prisma.profile.findUnique({
     where: { id: profileId },
@@ -171,10 +164,11 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
   }
   await prisma.jobPosting.update({ where: { id: jobId }, data: { status: "fetching" } });
   const ts = Date.now();
-  // Only attempt the slow headless-Chrome render fallback when this job was just
-  // retried (`renderHints`); batch fetches skip it so they stay fast.
-  const render = renderHints.delete(jobId);
-  const fetched = await findJobDescription(job.url, { render });
+  // Render the first page with headless Chrome as the fallback (JS-rendered boards
+  // build the JD client-side, so it never appears in the static HTML). Bounded by
+  // MAX_RENDERS in lib/export/pdf.ts so a wide batch never overloads the box; fast
+  // paths (JSON-LD / ATS API) return first and never render.
+  const fetched = await findJobDescription(job.url, { render: true });
   const scrapeMs = Date.now() - ts;
   if (!fetched.ok) {
     await prisma.jobPosting.update({ where: { id: jobId }, data: { status: "failed", error: fetched.error } });
@@ -184,16 +178,36 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
     const te = Date.now();
     const fields = await extractJobFields(fetched.text);
 
-    // Guard: a stub / login-gated / JS-rendered page yields empty fields. Don't
-    // mark it "fetched" and tailor a junk resume off no real JD — fail it so the
-    // user can paste the description instead.
     const desc = (fields.description ?? "").trim();
-    if (!fields.company?.trim() || !fields.role?.trim() || desc.length < 200) {
+    const company = fields.company?.trim() || "";
+    const role = fields.role?.trim() || "";
+
+    // Not enough of a JD to tailor on. If we still read a company/role (a real
+    // posting or an apply-only form), keep it as "needs_jd" — shown as "Fetched"
+    // so the user can paste the JD manually — and DON'T auto-tailor a junk resume
+    // off an empty JD. Only when we got nothing usable at all is it a real failure.
+    if (desc.length < 200) {
+      if (company || role) {
+        await prisma.jobPosting.update({
+          where: { id: jobId },
+          data: {
+            company: company || null,
+            role: role || null,
+            location: fields.location || null,
+            workplace: fields.workplace || null,
+            descriptionRaw: null,
+            descriptionParsed: { description: "", requirements: fields.requirements ?? [], atsSkills: null },
+            status: "needs_jd",
+            error: null,
+          },
+        });
+        return false; // don't tailor — waits for a pasted JD
+      }
       await prisma.jobPosting.update({
         where: { id: jobId },
         data: {
           status: "failed",
-          error: "Couldn't read the job description on that page (it may be login-gated or JavaScript-rendered). Paste it instead.",
+          error: "Couldn't read this page (it may be login-gated or blocked). Paste the job description instead.",
         },
       });
       return false;
