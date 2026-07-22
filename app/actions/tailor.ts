@@ -73,6 +73,8 @@ export type TailoredPreview = {
   content: ResumeContent;
   template: string;
   order: SectionKey[];
+  resumeFont: string;
+  resumeFontScale: number;
   fitBefore: number | null;
   fitAfter: number | null;
   fitDetail: { matched?: string[]; missing?: string[] } | null;
@@ -88,11 +90,13 @@ export async function previewTailored(tailoredId: string): Promise<TailoredPrevi
   // Render with the profile's template (or the owner's Settings default) so a
   // change is reflected immediately — not the per-resume template saved at
   // tailor time.
-  const { sectionOrder, defaultTemplate } = await getSettings(t.profile.clientId);
+  const { sectionOrder, defaultTemplate, resumeFont, resumeFontScale } = await getSettings(t.profile.clientId);
   return {
     content: t.content as ResumeContent,
     template: t.profile.templateId ?? defaultTemplate,
     order: sectionOrder,
+    resumeFont,
+    resumeFontScale,
     fitBefore: t.fitBefore,
     fitAfter: t.fitAfter,
     fitDetail: t.fitDetail as { matched?: string[]; missing?: string[] } | null,

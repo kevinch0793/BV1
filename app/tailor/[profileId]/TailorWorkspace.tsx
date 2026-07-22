@@ -24,6 +24,8 @@ export function TailorWorkspace({
   jobs,
   order,
   defaultTemplate,
+  fontId,
+  fontScale,
 }: {
   profileId: string;
   hasBaseResume: boolean;
@@ -31,6 +33,8 @@ export function TailorWorkspace({
   jobs: { id: string; label: string }[];
   order: SectionKey[];
   defaultTemplate: string;
+  fontId?: string;
+  fontScale?: number;
 }) {
   const [mode, setMode] = useState<Mode>(hasBaseResume ? "with_base" : "from_scratch");
   const [jobId, setJobId] = useState<string>(jobs[0]?.id ?? "");
@@ -169,7 +173,7 @@ export function TailorWorkspace({
         {cleaned ? (
           <div className="overflow-x-auto">
             <div className="print-sheet mx-auto">
-              <ResumePreview content={cleaned} template={template} order={order} />
+              <ResumePreview content={cleaned} template={template} order={order} fontId={fontId} fontScale={fontScale} />
             </div>
           </div>
         ) : (

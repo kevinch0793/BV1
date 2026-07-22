@@ -6,12 +6,17 @@ import { prisma } from "@/lib/db";
 import { parseSectionOrder } from "@/lib/settings";
 import { requireClient } from "@/lib/auth";
 
-export async function updateDefaultTemplate(template: string) {
+// Save the client-wide resume style: template + font family + size scale, all
+// applied live at render time (so every existing resume + PDF restyles).
+export async function updateTemplateStyle(template: string, resumeFont: string, resumeFontScale: number) {
   const { id: clientId } = await requireClient();
+  const font = String(resumeFont || "default");
+  const scale = [90, 100, 110, 120].includes(resumeFontScale) ? resumeFontScale : 100;
+  const data = { defaultTemplate: template, resumeFont: font, resumeFontScale: scale };
   await prisma.settings.upsert({
     where: { clientId },
-    create: { clientId, defaultTemplate: template },
-    update: { defaultTemplate: template },
+    create: { clientId, ...data },
+    update: data,
   });
   revalidatePath("/settings");
   revalidatePath("/resume", "layout");

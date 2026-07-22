@@ -55,8 +55,12 @@ export async function saveResumeToDownloads(
     if (format === "docx") {
       buf = await buildResumeDocx(content, order);
     } else {
-      const printUrl = `${internalOrigin()}/print/${tailoredId}?template=${encodeURIComponent(template)}&order=${encodeURIComponent(order.join(","))}`;
-      buf = await renderResumePdfCached(printUrl, `${tailoredId}|${template}|${order.join(",")}|${JSON.stringify(content)}`);
+      // Font family + size come from client-wide Settings (like template/order) and
+      // are part of the cache key so a Settings change re-renders the PDF.
+      const font = settings.resumeFont;
+      const size = settings.resumeFontScale;
+      const printUrl = `${internalOrigin()}/print/${tailoredId}?template=${encodeURIComponent(template)}&order=${encodeURIComponent(order.join(","))}&font=${encodeURIComponent(font)}&size=${size}`;
+      buf = await renderResumePdfCached(printUrl, `${tailoredId}|${template}|${order.join(",")}|${font}|${size}|${JSON.stringify(content)}`);
     }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Export failed." };

@@ -17,6 +17,15 @@ body {
   color: var(--foreground);
 }
 
+/* Global resume font override (Settings → Template font family). The chosen
+   stack is passed as the --rs-font custom property on the resume root; the
+   !important here lets it win over the template's Tailwind font-sans/serif/mono
+   classes on every descendant. Scoped to the resume only. */
+.rs-font-override,
+.rs-font-override * {
+  font-family: var(--rs-font), sans-serif !important;
+}
+
 /* The on-screen "paper" for a resume preview. */
 .print-sheet {
   width: 8.5in;

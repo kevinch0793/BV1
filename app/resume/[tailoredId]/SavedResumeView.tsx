@@ -15,6 +15,8 @@ export function SavedResumeView({
   content,
   templateId,
   order,
+  fontId,
+  fontScale,
   fitBefore,
   fitAfter,
   fitDetail,
@@ -23,6 +25,8 @@ export function SavedResumeView({
   content: ResumeContent;
   templateId: TemplateId;
   order: SectionKey[];
+  fontId?: string;
+  fontScale?: number;
   fitBefore: number | null;
   fitAfter: number | null;
   fitDetail: FitDetail | null;
@@ -117,7 +121,7 @@ export function SavedResumeView({
 
       <div className="overflow-x-auto">
         <div className="print-sheet mx-auto">
-          <ResumePreview content={content} template={template} order={order} />
+          <ResumePreview content={content} template={template} order={order} fontId={fontId} fontScale={fontScale} />
         </div>
       </div>
     </div>

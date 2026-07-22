@@ -74,7 +74,12 @@ export default async function SettingsPage() {
         <p className="mb-3 text-xs text-neutral-500">
           The template used for every resume — preview, download (PDF &amp; DOCX), and the dashboard Apply action. Changing it here applies everywhere.
         </p>
-        <TemplateSettings initial={settings.defaultTemplate} order={settings.sectionOrder} />
+        <TemplateSettings
+          initial={settings.defaultTemplate}
+          initialFont={settings.resumeFont}
+          initialScale={settings.resumeFontScale}
+          order={settings.sectionOrder}
+        />
       </section>
 
       {/* Skills section size */}

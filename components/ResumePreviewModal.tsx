@@ -83,7 +83,7 @@ export function ResumePreviewModal({ tailoredId, onClose }: { tailoredId: string
           {data && data.fitAfter != null && <FitPanel data={data} />}
           {data && (
             <div className="print-sheet mx-auto">
-              <ResumePreview content={data.content} template={normalizeTemplate(data.template)} order={data.order} />
+              <ResumePreview content={data.content} template={normalizeTemplate(data.template)} order={data.order} fontId={data.resumeFont} fontScale={data.resumeFontScale} />
             </div>
           )}
         </div>

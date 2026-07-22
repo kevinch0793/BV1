@@ -299,6 +299,39 @@ export const TEMPLATES: { id: TemplateId; label: string; description: string }[]
   THEMES,
 ).map((t) => ({ id: t.id, label: t.label, description: t.description }));
 
+// Resume font family choices (Settings → Template). "default" keeps each
+// template's own mixed fonts; any other choice applies one family to the whole
+// resume via the `.rs-font-override` rule in globals.css. Stacks resolve to the
+// loaded Geist fonts or web-safe system fonts, so preview and PDF match.
+export const RESUME_FONTS = [
+  { id: "default", label: "Template default", stack: "" },
+  { id: "sans", label: "Sans (Geist)", stack: "var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif" },
+  { id: "arial", label: "Arial", stack: "Arial, Helvetica, sans-serif" },
+  { id: "georgia", label: "Georgia (serif)", stack: "Georgia, 'Times New Roman', serif" },
+  { id: "times", label: "Times New Roman", stack: "'Times New Roman', Times, serif" },
+  { id: "mono", label: "Mono (Geist)", stack: "var(--font-geist-mono), ui-monospace, monospace" },
+] as const;
+
+// Font-size presets → a proportional zoom % applied to the whole resume.
+export const FONT_SIZES = [
+  { id: 90, label: "Compact" },
+  { id: 100, label: "Normal" },
+  { id: 110, label: "Large" },
+  { id: 120, label: "X-Large" },
+] as const;
+
+export const DEFAULT_FONT = "default";
+export const DEFAULT_FONT_SCALE = 100;
+
+export function resumeFontStack(id?: string | null): string {
+  return RESUME_FONTS.find((f) => f.id === id)?.stack ?? "";
+}
+
+/** Clamp a stored scale to a known preset (else Normal). */
+export function normalizeFontScale(n: number | null | undefined): number {
+  return FONT_SIZES.some((s) => s.id === n) ? (n as number) : DEFAULT_FONT_SCALE;
+}
+
 function dateRange(a?: string | null, b?: string | null): string {
   return [a, b].filter(Boolean).join(" - ");
 }
@@ -437,15 +470,39 @@ function EducationBlock({ t, r }: { t: Theme; r: ResumeContent }) {
   );
 }
 
-function ResumeDoc({ t, r, order }: { t: Theme; r: ResumeContent; order: SectionKey[] }) {
+function ResumeDoc({
+  t,
+  r,
+  order,
+  fontId,
+  fontScale,
+}: {
+  t: Theme;
+  r: ResumeContent;
+  order: SectionKey[];
+  fontId?: string;
+  fontScale?: number;
+}) {
   const blocks: Record<SectionKey, React.ReactNode> = {
     summary: <SummaryBlock key="summary" t={t} r={r} />,
     experience: <ExperienceBlock key="experience" t={t} r={r} />,
     skills: <SkillsBlock key="skills" t={t} r={r} />,
     education: <EducationBlock key="education" t={t} r={r} />,
   };
+  // Optional client-wide overrides (Settings → Template): a global font family
+  // (forced over the template's font classes via the `.rs-font-override` rule)
+  // and a proportional whole-resume zoom. Both are no-ops at their defaults, so
+  // an untouched resume renders exactly as before.
+  const stack = resumeFontStack(fontId);
+  const scale = fontScale ?? DEFAULT_FONT_SCALE;
+  const style: Record<string, string | number> = {};
+  if (stack) style["--rs-font"] = stack;
+  if (scale !== DEFAULT_FONT_SCALE) style.zoom = scale / 100;
   return (
-    <div className={t.root}>
+    <div
+      className={`${t.root}${stack ? " rs-font-override" : ""}`}
+      style={Object.keys(style).length ? (style as React.CSSProperties) : undefined}
+    >
       <Header t={t} r={r} />
       {order.map((k) => blocks[k])}
     </div>
@@ -456,15 +513,19 @@ export function ResumePreview({
   content,
   template,
   order = SECTION_KEYS,
+  fontId,
+  fontScale,
 }: {
   content: ResumeContent;
   template: TemplateId;
   order?: SectionKey[];
+  fontId?: string;
+  fontScale?: number;
 }) {
   // Defensive: strip any en/em dashes (covers manual edits + older saved data).
   const r = deepStripDashes(content);
   const theme = THEMES[template] ?? THEMES[DEFAULT_TEMPLATE];
-  return <ResumeDoc t={theme} r={r} order={order} />;
+  return <ResumeDoc t={theme} r={r} order={order} fontId={fontId} fontScale={fontScale} />;
 }
 
 /** Normalize a possibly-legacy stored template id to a current one. */

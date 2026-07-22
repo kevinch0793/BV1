@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ResumePreview, TEMPLATES, normalizeTemplate, type TemplateId } from "@/components/templates";
+import { ResumePreview, TEMPLATES, RESUME_FONTS, FONT_SIZES, normalizeTemplate, normalizeFontScale, type TemplateId } from "@/components/templates";
 import type { SectionKey } from "@/lib/sections";
 import type { ResumeContent } from "@/lib/llm/schema";
-import { updateDefaultTemplate } from "@/app/actions/settings";
+import { updateTemplateStyle } from "@/app/actions/settings";
 
 const input =
   "w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500";
@@ -82,15 +82,28 @@ const SAMPLE: ResumeContent = {
   ],
 };
 
-export function TemplateSettings({ initial, order }: { initial: string; order: SectionKey[] }) {
+export function TemplateSettings({
+  initial,
+  initialFont,
+  initialScale,
+  order,
+}: {
+  initial: string;
+  initialFont: string;
+  initialScale: number;
+  order: SectionKey[];
+}) {
   const [template, setTemplate] = useState<TemplateId>(normalizeTemplate(initial));
+  const [font, setFont] = useState<string>(initialFont || "default");
+  const [scale, setScale] = useState<number>(normalizeFontScale(initialScale));
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
-  const dirty = template !== normalizeTemplate(initial);
+  const dirty =
+    template !== normalizeTemplate(initial) || font !== (initialFont || "default") || scale !== normalizeFontScale(initialScale);
 
   function save() {
     start(async () => {
-      await updateDefaultTemplate(template);
+      await updateTemplateStyle(template, font, scale);
       setSaved(true);
     });
   }
@@ -113,18 +126,48 @@ export function TemplateSettings({ initial, order }: { initial: string; order: S
             ))}
           </select>
         </label>
+        <label className="flex flex-col gap-1 text-sm font-medium text-neutral-700">
+          Font family
+          <select
+            value={font}
+            onChange={(e) => {
+              setFont(e.target.value);
+              setSaved(false);
+            }}
+            className={`${input} w-44`}
+          >
+            {RESUME_FONTS.map((f) => (
+              <option key={f.id} value={f.id}>{f.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm font-medium text-neutral-700">
+          Font size
+          <select
+            value={scale}
+            onChange={(e) => {
+              setScale(Number(e.target.value));
+              setSaved(false);
+            }}
+            className={`${input} w-36`}
+          >
+            {FONT_SIZES.map((s) => (
+              <option key={s.id} value={s.id}>{s.label} ({s.id}%)</option>
+            ))}
+          </select>
+        </label>
         <button onClick={save} disabled={!dirty || pending} className={saveBtn}>
-          {pending ? "Saving…" : "Save template"}
+          {pending ? "Saving…" : "Save"}
         </button>
         {saved && !dirty && <span className="text-xs text-emerald-600">Saved.</span>}
       </div>
 
-      {/* Live preview — updates the moment you change the template. */}
+      {/* Live preview — updates the moment you change the template, font, or size. */}
       <div>
         <div className="mb-1 text-xs font-medium text-neutral-500">Preview</div>
         <div className="max-h-[560px] overflow-auto rounded-lg border border-neutral-200 bg-neutral-100 p-4">
           <div className="print-sheet mx-auto" style={{ minHeight: 0 }}>
-            <ResumePreview content={SAMPLE} template={template} order={order} />
+            <ResumePreview content={SAMPLE} template={template} order={order} fontId={font} fontScale={scale} />
           </div>
         </div>
       </div>

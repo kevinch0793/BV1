@@ -50,8 +50,12 @@ export async function GET(
       });
     }
 
-    const printUrl = `${internalOrigin()}/print/${tailoredId}?template=${encodeURIComponent(template)}&order=${encodeURIComponent(order.join(","))}`;
-    const buf = await renderResumePdfCached(printUrl, `${tailoredId}|${template}|${order.join(",")}|${JSON.stringify(content)}`);
+    // Font family + size come from client-wide Settings (like template/order) and
+    // are part of the cache key so a Settings change re-renders the PDF.
+    const font = settings.resumeFont;
+    const size = settings.resumeFontScale;
+    const printUrl = `${internalOrigin()}/print/${tailoredId}?template=${encodeURIComponent(template)}&order=${encodeURIComponent(order.join(","))}&font=${encodeURIComponent(font)}&size=${size}`;
+    const buf = await renderResumePdfCached(printUrl, `${tailoredId}|${template}|${order.join(",")}|${font}|${size}|${JSON.stringify(content)}`);
     return new NextResponse(new Uint8Array(buf), {
       headers: {
         "Content-Type": "application/pdf",

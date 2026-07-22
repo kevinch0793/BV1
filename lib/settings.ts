@@ -18,9 +18,14 @@ export type AppSettings = {
   customInstructions: string;
   sectionOrder: SectionKey[];
   defaultTemplate: string;
+  resumeFont: string;
+  resumeFontScale: number;
   tailoringModel: string;
   skills: SkillsConfig;
 };
+
+// Allowed font-size presets (proportional whole-resume zoom %).
+const FONT_SCALES = [90, 100, 110, 120];
 
 // Keep the range sane regardless of stored values (min<=max, within bounds).
 function cleanSkills(s: { skillsMinCategories?: number; skillsMaxCategories?: number; skillsMinItems?: number; skillsMaxItems?: number } | null): SkillsConfig {
@@ -40,6 +45,8 @@ export async function getSettings(clientId: string): Promise<AppSettings> {
     customInstructions: s?.customInstructions ?? "",
     sectionOrder: parseSectionOrder(s?.sectionOrder),
     defaultTemplate: s?.defaultTemplate ?? "modern",
+    resumeFont: s?.resumeFont ?? "default",
+    resumeFontScale: FONT_SCALES.includes(s?.resumeFontScale as number) ? (s!.resumeFontScale as number) : 100,
     tailoringModel: s?.tailoringModel ?? "claude-sonnet-4-6",
     skills: cleanSkills(s),
   };

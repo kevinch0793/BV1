@@ -84,6 +84,8 @@ model Settings {
   skillsPosition     String   @default("after") // legacy; superseded by sectionOrder
   sectionOrder       String   @default("summary,experience,skills,education") // resume section render order
   defaultTemplate    String   @default("modern") // default resume template id
+  resumeFont         String   @default("default") // resume font family id (default = template's own fonts)
+  resumeFontScale    Int      @default(100) // proportional whole-resume zoom % (Compact 90 … X-Large 120)
   tailoringModel     String   @default("claude-sonnet-4-6") // Claude model used for tailoring
   // Skills-section size: the resume fills to this range (drawing on the profile's
   // own skills + role-relevant defaults) even when the JD lists few skills.

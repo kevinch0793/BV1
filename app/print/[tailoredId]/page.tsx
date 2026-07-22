@@ -14,7 +14,7 @@ export default async function PrintPage({
   searchParams,
 }: {
   params: Promise<{ tailoredId: string }>;
-  searchParams: Promise<{ template?: string; order?: string }>;
+  searchParams: Promise<{ template?: string; order?: string; font?: string; size?: string }>;
 }) {
   const { tailoredId } = await params;
   const sp = await searchParams;
@@ -28,12 +28,15 @@ export default async function PrintPage({
   });
   if (!t) notFound();
 
+  const settings = await getSettings(t.profile.clientId);
   const template = normalizeTemplate(sp.template ?? t.profile.templateId ?? t.templateId);
-  const order = sp.order ? parseSectionOrder(sp.order) : (await getSettings(t.profile.clientId)).sectionOrder;
+  const order = sp.order ? parseSectionOrder(sp.order) : settings.sectionOrder;
+  const fontId = sp.font ?? settings.resumeFont;
+  const fontScale = sp.size ? Number(sp.size) : settings.resumeFontScale;
 
   return (
     <div className="print-sheet mx-auto">
-      <ResumePreview content={t.content as ResumeContent} template={template} order={order} />
+      <ResumePreview content={t.content as ResumeContent} template={template} order={order} fontId={fontId} fontScale={fontScale} />
     </div>
   );
 }

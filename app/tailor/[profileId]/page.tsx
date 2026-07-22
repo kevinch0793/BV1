@@ -19,7 +19,7 @@ export default async function TailorPage({ params }: { params: Promise<{ profile
   });
   if (!profile) notFound();
 
-  const { sectionOrder, defaultTemplate } = await getSettings(profile.clientId);
+  const { sectionOrder, defaultTemplate, resumeFont, resumeFontScale } = await getSettings(profile.clientId);
 
   return (
     <div className="space-y-4">
@@ -35,6 +35,8 @@ export default async function TailorPage({ params }: { params: Promise<{ profile
         projectCount={profile._count.experiences}
         order={sectionOrder}
         defaultTemplate={profile.templateId ?? defaultTemplate}
+        fontId={resumeFont}
+        fontScale={resumeFontScale}
         jobs={profile.jobs.map((j) => ({
           id: j.id,
           label: `${j.role || "Role?"} · ${j.company || "Company?"}`,
