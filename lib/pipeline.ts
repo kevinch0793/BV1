@@ -5,6 +5,7 @@ import { llmProfileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { extractJdSkills, scoreFit, profileToText, type JdSkills } from "@/lib/llm/ats";
 import { getCustomInstructions, type SkillsConfig } from "@/lib/settings";
 import { pruneOldActivity } from "@/lib/retention";
+import { withUsage, withKind } from "@/lib/llm/usage";
 import type { JobForLLM } from "@/lib/llm/prompts";
 
 // clientId is captured at the request-context action entry (startPipeline) and
@@ -145,15 +146,20 @@ async function loop(profileId: string): Promise<void> {
 
 /** One job's full chain: fetch (if needed) then tailor (if possible). */
 async function processJob(profileId: string, jobId: string, canTailor: boolean): Promise<void> {
-  const job = await prisma.jobPosting.findUnique({ where: { id: jobId }, select: { status: true } });
-  if (!job) return;
-  if (job.status === "pending") {
-    const ok = await fetchJobNow(jobId);
-    if (!ok) return;
-  }
-  if (canTailor) {
-    await tailorJobNow(jobId, running.get(profileId) ?? {});
-  }
+  const opts = running.get(profileId) ?? {};
+  // Attribute every LLM call in this job's chain to the client/profile/job for the
+  // admin usage analytics. Sub-calls re-tag the kind (fetch / jd_skills / tailor).
+  return withUsage({ clientId: opts.clientId ?? null, profileId, jobId, kind: "tailor" }, async () => {
+    const job = await prisma.jobPosting.findUnique({ where: { id: jobId }, select: { status: true } });
+    if (!job) return;
+    if (job.status === "pending") {
+      const ok = await fetchJobNow(jobId);
+      if (!ok) return;
+    }
+    if (canTailor) {
+      await tailorJobNow(jobId, opts);
+    }
+  });
 }
 
 async function fetchJobNow(jobId: string): Promise<boolean> {
@@ -176,7 +182,7 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
   }
   try {
     const te = Date.now();
-    const fields = await extractJobFields(fetched.text);
+    const fields = await withKind("fetch", () => extractJobFields(fetched.text));
 
     const desc = (fields.description ?? "").trim();
     const company = fields.company?.trim() || "";
@@ -262,7 +268,7 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
     // {hardSkills, themes} shape; older jobs stored {mustHave, preferred} (or
     // nothing) — re-extract those so they get the new categorization.
     const stored = parsed.atsSkills && Array.isArray(parsed.atsSkills.hardSkills) ? parsed.atsSkills : null;
-    const skills = stored ?? (await extractJdSkills(jobFields).catch(() => null));
+    const skills = stored ?? (await withKind("jd_skills", () => extractJdSkills(jobFields)).catch(() => null));
     const content = await tailorResume({
       mode,
       profile: profileForLLM,

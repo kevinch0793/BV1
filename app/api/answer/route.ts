@@ -5,6 +5,7 @@ import { llmProfileInclude, toProfileForLLM, asLinks } from "@/lib/profile-data"
 import { profileToText } from "@/lib/llm/ats";
 import { answerApplicationQuestions } from "@/lib/llm/answer";
 import { getSettings } from "@/lib/settings";
+import { withUsage } from "@/lib/llm/usage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -82,12 +83,16 @@ export async function POST(req: Request) {
   const { customInstructions } = await getSettings(tokenRow.clientId);
 
   try {
-    const answers = await answerApplicationQuestions({
-      profileText,
-      jobText,
-      questions,
-      customInstructions: customInstructions ?? undefined,
-    });
+    const answers = await withUsage(
+      { clientId: tokenRow.clientId, profileId: tokenRow.profileId, kind: "answer" },
+      () =>
+        answerApplicationQuestions({
+          profileText,
+          jobText,
+          questions,
+          customInstructions: customInstructions ?? undefined,
+        }),
+    );
     return json({ answers });
   } catch (e) {
     return json({ error: `Answer generation failed: ${e instanceof Error ? e.message : "unknown"}` }, 500);

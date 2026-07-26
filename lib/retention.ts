@@ -5,6 +5,9 @@ import { recentAppDayKeys, appDayRange } from "@/lib/appday";
 // jobs (and their tailored resumes, via cascade) are pruned automatically and
 // the freed pages are physically reclaimed (VACUUM) so searches stay fast.
 export const RETENTION_DAYS = 30;
+// Usage events are tiny and feed the admin analytics trend, so keep a longer
+// window than raw job activity (survives the 30-day job prune).
+export const USAGE_RETENTION_DAYS = 90;
 
 /** The UTC instant before which activity is considered "older than the window". */
 export function retentionCutoff(days = RETENTION_DAYS): Date {
@@ -22,6 +25,8 @@ export async function pruneOldActivity(opts?: { vacuum?: boolean }): Promise<{ j
   const cutoff = retentionCutoff();
   const jobs = await prisma.jobPosting.deleteMany({ where: { createdAt: { lt: cutoff } } });
   const resumes = await prisma.tailoredResume.deleteMany({ where: { jobPostingId: null, createdAt: { lt: cutoff } } });
+  // Prune usage events on their own (longer) window so the analytics trend survives.
+  await prisma.usageEvent.deleteMany({ where: { createdAt: { lt: retentionCutoff(USAGE_RETENTION_DAYS) } } }).catch(() => {});
   if (opts?.vacuum && jobs.count + resumes.count > 0) {
     try {
       await prisma.$executeRawUnsafe("VACUUM");

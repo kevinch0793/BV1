@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
+import { recordUsage } from "@/lib/llm/usage";
 
 // Lazily-constructed shared client — reads ANTHROPIC_API_KEY from the
 // environment. Lazy so importing this module (e.g. during `next build`) doesn't
@@ -66,6 +67,13 @@ export async function generateStructured<T>({
   }
 
   const ms = Date.now() - t0;
+  recordUsage({
+    provider: "anthropic",
+    model,
+    inputTokens: response.usage?.input_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
+    ms,
+  });
   if (process.env.LLM_DEBUG) {
     console.log(`[llm] ${model} ${ms}ms in=${response.usage?.input_tokens ?? "?"} out=${response.usage?.output_tokens ?? "?"}tok cap=${maxTokens} stop=${response.stop_reason}`);
   }

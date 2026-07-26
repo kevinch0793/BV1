@@ -205,3 +205,23 @@ model TailoredResume {
   fitDetail    Json? // { jdSkills:{hardSkills,themes}, matched:[], missing:[] }
   createdAt    DateTime    @default(now())
 }
+
+/// One LLM call's usage — tokens + latency — for the admin analytics dashboard.
+/// Plain string ids (NO FKs) so a client's usage history survives profile/job
+/// pruning. Written from the LLM wrappers via AsyncLocalStorage (lib/llm/usage.ts).
+model UsageEvent {
+  id           String   @id @default(cuid())
+  clientId     String
+  profileId    String?
+  jobId        String?
+  kind         String // tailor | fetch | jd_skills | answer | parse
+  provider     String // anthropic | openai
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  ms           Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([createdAt])
+}

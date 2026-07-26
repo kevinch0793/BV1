@@ -7,6 +7,7 @@ import { tailorResume } from "@/lib/llm/service";
 import { computeFit, profileToText } from "@/lib/llm/ats";
 import { getSettings } from "@/lib/settings";
 import { assertOwnsProfile, assertOwnsJob, assertOwnsTailored, ownedByProfileWhere } from "@/lib/owner";
+import { withUsage } from "@/lib/llm/usage";
 import type { ResumeContent } from "@/lib/llm/schema";
 import type { JobForLLM } from "@/lib/llm/prompts";
 import type { SectionKey } from "@/lib/sections";
@@ -53,16 +54,20 @@ export async function generateTailored(args: {
 
   const { customInstructions, skills } = await getSettings(clientId);
   try {
-    const content = await tailorResume({
-      mode: args.mode,
-      profile: toProfileForLLM(profile),
-      job,
-      baseResume: profile.baseResume?.rawText,
-      instructions: args.instructions,
-      customInstructions,
-      model: args.model,
-      skills,
-    });
+    const content = await withUsage(
+      { clientId, profileId: args.profileId, jobId: args.jobId ?? null, kind: "tailor" },
+      () =>
+        tailorResume({
+          mode: args.mode,
+          profile: toProfileForLLM(profile),
+          job,
+          baseResume: profile.baseResume?.rawText,
+          instructions: args.instructions,
+          customInstructions,
+          model: args.model,
+          skills,
+        }),
+    );
     return { ok: true, content };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
@@ -174,16 +179,20 @@ export async function autoTailorJob(
   const { customInstructions, skills } = await getSettings(clientId);
   let content: ResumeContent;
   try {
-    content = await tailorResume({
-      mode,
-      profile: profileForLLM,
-      job: jobFields,
-      baseResume: profile.baseResume?.rawText,
-      instructions: opts?.instructions,
-      customInstructions,
-      model: opts?.model,
-      skills,
-    });
+    content = await withUsage(
+      { clientId, profileId: job.profileId, jobId, kind: "tailor" },
+      () =>
+        tailorResume({
+          mode,
+          profile: profileForLLM,
+          job: jobFields,
+          baseResume: profile.baseResume?.rawText,
+          instructions: opts?.instructions,
+          customInstructions,
+          model: opts?.model,
+          skills,
+        }),
+    );
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
