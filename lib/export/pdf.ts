@@ -15,25 +15,56 @@ export function internalOrigin(): string {
 }
 
 // Keep ONE headless Chrome warm and reuse it across renders (each render gets a
-// fresh page/tab). Launching Chrome per request is the slow, memory-heavy part —
-// reusing it makes downloads fast and stops repeated exports from thrashing the
-// box. The browser relaunches automatically if it disconnects/crashes.
-let browserP: Promise<Browser> | null = null;
+// fresh page/tab). Launching Chrome per request is the slow, memory-heavy part.
+//
+// The handle is cached on globalThis (like lib/db.ts caches Prisma) so Next.js
+// dev hot-reload REUSES the same Chrome instead of orphaning it and launching a
+// new one on every module reload — historically the main source of leaked Chrome
+// processes. We keep the resolved Browser too, so shutdown can reap it.
+const g = globalThis as unknown as {
+  __bv1_browserP?: Promise<Browser> | null;
+  __bv1_browser?: Browser | null;
+  __bv1_exitHooked?: boolean;
+};
+
+// Hard-kill a browser's Chrome process tree so its child processes are reaped.
+// Safe on an already-dead browser.
+function killBrowser(b: Browser | null | undefined): void {
+  try {
+    b?.process()?.kill("SIGKILL");
+  } catch {
+    /* already gone */
+  }
+}
 
 async function launch(): Promise<Browser> {
   const b = await puppeteer.launch({
     headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
+  g.__bv1_browser = b;
+  // If Chrome dies/disconnects, drop the handle AND reap any straggler processes
+  // so a crashed browser never lingers; the next render lazily launches a fresh one.
   b.on("disconnected", () => {
-    browserP = null;
+    if (g.__bv1_browser === b) g.__bv1_browser = null;
+    g.__bv1_browserP = null;
+    killBrowser(b);
   });
+  // Belt-and-suspenders: reap the warm browser on clean process exit so shutdown
+  // never orphans Chrome. Registered once. (Puppeteer already handles the
+  // SIGINT/SIGTERM/SIGHUP signals itself.)
+  if (!g.__bv1_exitHooked) {
+    g.__bv1_exitHooked = true;
+    process.on("exit", () => killBrowser(g.__bv1_browser));
+  }
   return b;
 }
 
 async function getBrowser(): Promise<Browser> {
-  if (!browserP) browserP = launch().catch((e) => ((browserP = null), Promise.reject(e)));
-  return browserP;
+  if (!g.__bv1_browserP) {
+    g.__bv1_browserP = launch().catch((e) => ((g.__bv1_browserP = null), Promise.reject(e)));
+  }
+  return g.__bv1_browserP;
 }
 
 /**
@@ -46,11 +77,13 @@ async function getBrowser(): Promise<Browser> {
  */
 export async function renderResumePdf(url: string): Promise<Buffer> {
   let browser = await getBrowser();
-  let page;
+  let page: Page;
   try {
     page = await browser.newPage();
   } catch {
-    browserP = null; // stale handle — relaunch once
+    // The cached browser may have just died (its `disconnected` handler clears +
+    // reaps it); getBrowser() relaunches when that happened, else returns the same
+    // live browser. Either way, only the page leaks are our concern — closed below.
     browser = await getBrowser();
     page = await browser.newPage();
   }
@@ -95,7 +128,12 @@ export async function renderResumePdfCached(url: string, cacheKey: string): Prom
 // per job; images/media/fonts are blocked for speed.
 
 const RENDER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
-const MAX_RENDERS = 4;
+// Max concurrent JD renders (headless Chrome tabs). Env-tunable; keep modest —
+// each open tab holds ~80-200 MB. Pairs with PIPELINE_CONCURRENCY (lib/pipeline.ts).
+const MAX_RENDERS = Math.max(1, Number(process.env.MAX_RENDERS) || 4);
+// Hard ceiling on a single render's wall time; a hung page is force-closed so it
+// can't wedge a render slot. Internal goto/wait timeouts (~15s+14s) sit under this.
+const RENDER_TIMEOUT_MS = Math.max(5000, Number(process.env.RENDER_TIMEOUT_MS) || 40000);
 let activeRenders = 0;
 const renderQueue: (() => void)[] = [];
 function acquireRender(): Promise<void> {
@@ -122,10 +160,30 @@ export async function renderPageText(url: string): Promise<string | null> {
     try {
       page = await browser.newPage();
     } catch {
-      browserP = null;
-      browser = await getBrowser();
+      browser = await getBrowser(); // browser may have died + been reaped — relaunch
       page = await browser.newPage();
     }
+    const pageRef = page; // for the timeout closer
+    // Hard outer timeout: if the render hangs past the internal timeouts, force the
+    // tab closed so it releases its slot instead of wedging the pool.
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => {
+        pageRef.close().catch(() => {});
+        reject(new Error("render timeout"));
+      }, RENDER_TIMEOUT_MS),
+    );
+    return await Promise.race([renderInPage(page, url), timeout]);
+  } catch {
+    return null;
+  } finally {
+    await page?.close().catch(() => {});
+    releaseRender();
+  }
+}
+
+// The actual page render: navigate, wait for the JD to populate, read it back.
+async function renderInPage(page: Page, url: string): Promise<string | null> {
+  {
     await page.setUserAgent(RENDER_UA);
     await page.setRequestInterception(true);
     page.on("request", (req) => {
@@ -178,10 +236,5 @@ export async function renderPageText(url: string): Promise<string | null> {
     });
     const out = (text || "").trim();
     return out.length >= 200 ? out : null;
-  } catch {
-    return null;
-  } finally {
-    await page?.close().catch(() => {});
-    releaseRender();
   }
 }
