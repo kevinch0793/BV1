@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { parseResume } from "@/lib/llm/service";
 import { requireClient } from "@/lib/auth";
 import { assertOwnsProfile } from "@/lib/owner";
+import { isTemplateAllowed, DEFAULT_TEMPLATE, RESUME_FONTS, ACCENT_COLORS } from "@/components/templates";
 
 const str = (v: FormDataEntryValue | null) => String(v ?? "").trim();
 const orNull = (v: FormDataEntryValue | null) => str(v) || null;
@@ -41,6 +42,8 @@ export async function createProfile(formData: FormData) {
       clientId,
       label: str(formData.get("label")) || "Untitled profile",
       fullName: str(formData.get("fullName")) || "New Profile",
+      resumeFont: "sans",
+      resumeAccent: "sky",
     },
   });
   redirect(`/profiles/${profile.id}`);
@@ -325,8 +328,25 @@ export async function saveBaseResume(profileId: string, formData: FormData) {
 
 /** Set a profile's resume-template override (null/"" = use the client default). */
 export async function setProfileTemplate(profileId: string, templateId: string | null): Promise<void> {
-  await assertOwnsProfile(profileId);
-  await prisma.profile.update({ where: { id: profileId }, data: { templateId: templateId || null } });
+  const clientId = await assertOwnsProfile(profileId);
+  const owner = await prisma.client.findUnique({ where: { id: clientId }, select: { email: true } });
+  const chosen = isTemplateAllowed(templateId, owner?.email) ? templateId : null;
+  await prisma.profile.update({ where: { id: profileId }, data: { templateId: chosen || null } });
   revalidatePath("/");
   revalidatePath("/profiles");
+  revalidatePath("/resume", "layout");
+}
+
+/** Per-profile resume style (template + font + accent), set from the profile's Template card. */
+export async function updateProfileTemplateStyle(profileId: string, template: string, font: string, accent: string): Promise<void> {
+  const clientId = await assertOwnsProfile(profileId);
+  const owner = await prisma.client.findUnique({ where: { id: clientId }, select: { email: true } });
+  const templateId = isTemplateAllowed(template, owner?.email) ? template : DEFAULT_TEMPLATE;
+  const resumeFont = RESUME_FONTS.some((f) => f.id === font) ? font : "sans";
+  const resumeAccent = ACCENT_COLORS.some((c) => c.id === accent) ? accent : "sky";
+  await prisma.profile.update({ where: { id: profileId }, data: { templateId, resumeFont, resumeAccent } });
+  revalidatePath("/");
+  revalidatePath("/profiles");
+  revalidatePath(`/profiles/${profileId}`);
+  revalidatePath("/resume", "layout");
 }

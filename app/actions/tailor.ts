@@ -79,7 +79,7 @@ export type TailoredPreview = {
   template: string;
   order: SectionKey[];
   resumeFont: string;
-  resumeFontScale: number;
+  resumeAccent: string;
   fitBefore: number | null;
   fitAfter: number | null;
   fitDetail: { matched?: string[]; missing?: string[] } | null;
@@ -89,19 +89,19 @@ export type TailoredPreview = {
 export async function previewTailored(tailoredId: string): Promise<TailoredPreview | null> {
   const t = await prisma.tailoredResume.findFirst({
     where: { id: tailoredId, ...(await ownedByProfileWhere()) },
-    include: { profile: { select: { clientId: true, templateId: true } } },
+    include: { profile: { select: { clientId: true, templateId: true, resumeFont: true, resumeAccent: true } } },
   });
   if (!t) return null;
   // Render with the profile's template (or the owner's Settings default) so a
   // change is reflected immediately — not the per-resume template saved at
   // tailor time.
-  const { sectionOrder, defaultTemplate, resumeFont, resumeFontScale } = await getSettings(t.profile.clientId);
+  const { sectionOrder } = await getSettings(t.profile.clientId);
   return {
     content: t.content as ResumeContent,
-    template: t.profile.templateId ?? defaultTemplate,
+    template: t.profile.templateId ?? "modern",
     order: sectionOrder,
-    resumeFont,
-    resumeFontScale,
+    resumeFont: t.profile.resumeFont ?? "sans",
+    resumeAccent: t.profile.resumeAccent ?? "sky",
     fitBefore: t.fitBefore,
     fitAfter: t.fitAfter,
     fitDetail: t.fitDetail as { matched?: string[]; missing?: string[] } | null,

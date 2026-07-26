@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { getSettings } from "@/lib/settings";
 import { profileWhere } from "@/lib/owner";
 import { TailorWorkspace } from "./TailorWorkspace";
+import { templatesFor, DEFAULT_TEMPLATE } from "@/components/templates";
 
 export const dynamic = "force-dynamic";
 
@@ -15,11 +16,12 @@ export default async function TailorPage({ params }: { params: Promise<{ profile
       baseResume: true,
       jobs: { where: { status: "fetched" }, orderBy: { createdAt: "desc" } },
       _count: { select: { experiences: true } },
+      client: { select: { email: true } },
     },
   });
   if (!profile) notFound();
 
-  const { sectionOrder, defaultTemplate, resumeFont, resumeFontScale } = await getSettings(profile.clientId);
+  const { sectionOrder } = await getSettings(profile.clientId);
 
   return (
     <div className="space-y-4">
@@ -34,9 +36,10 @@ export default async function TailorPage({ params }: { params: Promise<{ profile
         hasBaseResume={!!profile.baseResume}
         projectCount={profile._count.experiences}
         order={sectionOrder}
-        defaultTemplate={profile.templateId ?? defaultTemplate}
-        fontId={resumeFont}
-        fontScale={resumeFontScale}
+        defaultTemplate={profile.templateId ?? DEFAULT_TEMPLATE}
+        templates={templatesFor(profile.client.email)}
+        fontId={profile.resumeFont ?? "sans"}
+        accentId={profile.resumeAccent ?? "sky"}
         jobs={profile.jobs.map((j) => ({
           id: j.id,
           label: `${j.role || "Role?"} · ${j.company || "Company?"}`,

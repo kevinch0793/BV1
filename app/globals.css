@@ -26,6 +26,21 @@ body {
   font-family: var(--rs-font), sans-serif !important;
 }
 
+/* Accent color override (Settings → Template): recolor a template's accent
+   elements to the chosen --rs-accent. Only applies to a resume root that opts in
+   via .rs-accent-on, so default resumes are untouched. rs-ac = text-color accents
+   (section titles, links, company, subtitle); rs-ac-bg = filled backgrounds
+   (filled section chips, header rules); rs-ac-bd = accent borders (header rails). */
+.rs-accent-on .rs-ac {
+  color: var(--rs-accent) !important;
+}
+.rs-accent-on .rs-ac-bg {
+  background-color: var(--rs-accent) !important;
+}
+.rs-accent-on .rs-ac-bd {
+  border-color: var(--rs-accent) !important;
+}
+
 /* The on-screen "paper" for a resume preview. */
 .print-sheet {
   width: 8.5in;

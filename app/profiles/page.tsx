@@ -4,6 +4,7 @@ import { profileWhere, ownedByProfileWhere } from "@/lib/owner";
 import { appDayRange, currentAppDayKey } from "@/lib/appday";
 import { createProfile } from "@/app/actions/profiles";
 import { ProfileTemplateBadge } from "@/components/ProfileTemplateBadge";
+import { templatesFor } from "@/components/templates";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,14 @@ export default async function ProfilesPage() {
   ]);
 
   const tailoredJobIds = new Set(tailored.map((t) => t.jobPostingId));
+  // Flag profiles that share an identical resume style (template + font + color)
+  // with ANY other visible profile — global across every profile the viewer can
+  // see, so an admin catches collisions across all users (a regular user only sees
+  // their own profiles, so it stays within their set for them).
+  const styleKey = (p: { templateId: string | null; resumeFont: string | null; resumeAccent: string | null }) =>
+    `${p.templateId ?? "modern"}|${p.resumeFont ?? "sans"}|${p.resumeAccent ?? "sky"}`;
+  const styleCount = new Map<string, number>();
+  for (const p of profiles) styleCount.set(styleKey(p), (styleCount.get(styleKey(p)) ?? 0) + 1);
   const todayByProfile = new Map<string, { applied: number; tailored: number }>();
   for (const j of todayJobs) {
     const e = todayByProfile.get(j.profileId) ?? { applied: 0, tailored: 0 };
@@ -59,10 +68,15 @@ export default async function ProfilesPage() {
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {profiles.map((p) => (
             <li key={p.id} className="relative rounded-xl border border-neutral-200 bg-white transition hover:border-sky-300 hover:shadow-sm">
-              <ProfileTemplateBadge profileId={p.id} current={p.templateId} />
+              <ProfileTemplateBadge profileId={p.id} current={p.templateId} templates={templatesFor(p.client.email)} />
               <Link href={`/profiles/${p.id}`} className="block p-4">
                 <div className="text-sm font-medium text-sky-700">{p.label}</div>
                 <div className="text-lg font-semibold text-neutral-900">{p.fullName}</div>
+                {styleCount.get(styleKey(p))! > 1 && (
+                  <span className="mt-1 inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700" title="Shares its template, font, and color with another profile — consider making it distinct">
+                    ⚠ shared style
+                  </span>
+                )}
                 <div className="mt-1 truncate text-xs text-neutral-400" title={p.client.email}>{p.client.email}</div>
               </Link>
               <Link

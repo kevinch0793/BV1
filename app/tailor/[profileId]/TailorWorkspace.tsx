@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import type { ResumeContent } from "@/lib/llm/schema";
-import { ResumePreview, TEMPLATES, normalizeTemplate, type TemplateId } from "@/components/templates";
+import { ResumePreview, normalizeTemplate, type TemplateId, type TemplateOption } from "@/components/templates";
 import type { SectionKey } from "@/lib/sections";
 import { generateTailored, saveTailored } from "@/app/actions/tailor";
 
@@ -25,7 +25,8 @@ export function TailorWorkspace({
   order,
   defaultTemplate,
   fontId,
-  fontScale,
+  accentId,
+  templates,
 }: {
   profileId: string;
   hasBaseResume: boolean;
@@ -34,7 +35,8 @@ export function TailorWorkspace({
   order: SectionKey[];
   defaultTemplate: string;
   fontId?: string;
-  fontScale?: number;
+  accentId?: string;
+  templates: TemplateOption[];
 }) {
   const [mode, setMode] = useState<Mode>(hasBaseResume ? "with_base" : "from_scratch");
   const [jobId, setJobId] = useState<string>(jobs[0]?.id ?? "");
@@ -146,7 +148,7 @@ export function TailorWorkspace({
       <div className="space-y-3">
         <div className="no-print flex flex-wrap items-center justify-between gap-3">
           <div className="flex gap-1 rounded-lg border border-neutral-200 bg-white p-1">
-            {TEMPLATES.map((t) => (
+            {templates.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setTemplate(t.id)}
@@ -173,7 +175,7 @@ export function TailorWorkspace({
         {cleaned ? (
           <div className="overflow-x-auto">
             <div className="print-sheet mx-auto">
-              <ResumePreview content={cleaned} template={template} order={order} fontId={fontId} fontScale={fontScale} />
+              <ResumePreview content={cleaned} template={template} order={order} fontId={fontId} accentId={accentId} />
             </div>
           </div>
         ) : (

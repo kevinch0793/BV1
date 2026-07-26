@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ResumePreview, TEMPLATES, type TemplateId } from "@/components/templates";
+import { ResumePreview, type TemplateId, type TemplateOption } from "@/components/templates";
 import type { SectionKey } from "@/lib/sections";
 import type { ResumeContent } from "@/lib/llm/schema";
 import { downloadResume } from "@/lib/exportClient";
@@ -16,20 +16,22 @@ export function SavedResumeView({
   templateId,
   order,
   fontId,
-  fontScale,
+  accentId,
   fitBefore,
   fitAfter,
   fitDetail,
+  templates,
 }: {
   tailoredId: string;
   content: ResumeContent;
   templateId: TemplateId;
   order: SectionKey[];
   fontId?: string;
-  fontScale?: number;
+  accentId?: string;
   fitBefore: number | null;
   fitAfter: number | null;
   fitDetail: FitDetail | null;
+  templates: TemplateOption[];
 }) {
   const [template, setTemplate] = useState<TemplateId>(templateId);
   const [downloading, setDownloading] = useState<"pdf" | "docx" | null>(null);
@@ -61,7 +63,7 @@ export function SavedResumeView({
     <div className="space-y-3">
       <div className="no-print flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1 rounded-lg border border-neutral-200 bg-white p-1">
-          {TEMPLATES.map((t) => (
+          {templates.map((t) => (
             <button
               key={t.id}
               onClick={() => setTemplate(t.id)}
@@ -121,7 +123,7 @@ export function SavedResumeView({
 
       <div className="overflow-x-auto">
         <div className="print-sheet mx-auto">
-          <ResumePreview content={content} template={template} order={order} fontId={fontId} fontScale={fontScale} />
+          <ResumePreview content={content} template={template} order={order} fontId={fontId} accentId={accentId} />
         </div>
       </div>
     </div>

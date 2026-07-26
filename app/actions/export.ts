@@ -7,7 +7,7 @@ import fs from "node:fs/promises";
 import { prisma } from "@/lib/db";
 import { getSettings, parseSectionOrder } from "@/lib/settings";
 import { getCurrentClient } from "@/lib/auth";
-import { normalizeTemplate } from "@/components/templates";
+import { normalizeTemplate, DEFAULT_TEMPLATE } from "@/components/templates";
 import { buildResumeDocx } from "@/lib/export/docx";
 import { renderResumePdfCached, internalOrigin } from "@/lib/export/pdf";
 import { resumeFileName } from "@/lib/export/filename";
@@ -40,12 +40,12 @@ export async function saveResumeToDownloads(
   // Admins can export any resume; clients only their own.
   const t = await prisma.tailoredResume.findFirst({
     where: client.role === "admin" ? { id: tailoredId } : { id: tailoredId, profile: { clientId: client.id } },
-    include: { profile: { select: { clientId: true, templateId: true } }, job: { select: { role: true, company: true } } },
+    include: { profile: { select: { clientId: true, templateId: true, resumeFont: true, resumeAccent: true } }, job: { select: { role: true, company: true } } },
   });
   if (!t) return { ok: false, error: "Resume not found." };
 
   const settings = await getSettings(t.profile.clientId);
-  const template = normalizeTemplate(override?.template ?? t.profile.templateId ?? settings.defaultTemplate);
+  const template = normalizeTemplate(override?.template ?? t.profile.templateId ?? DEFAULT_TEMPLATE);
   const order = override?.order ? parseSectionOrder(override.order) : settings.sectionOrder;
   const content = t.content as ResumeContent;
   const filename = resumeFileName(content.name, format, { role: t.job?.role, company: t.job?.company });
@@ -57,10 +57,10 @@ export async function saveResumeToDownloads(
     } else {
       // Font family + size come from client-wide Settings (like template/order) and
       // are part of the cache key so a Settings change re-renders the PDF.
-      const font = settings.resumeFont;
-      const size = settings.resumeFontScale;
-      const printUrl = `${internalOrigin()}/print/${tailoredId}?template=${encodeURIComponent(template)}&order=${encodeURIComponent(order.join(","))}&font=${encodeURIComponent(font)}&size=${size}`;
-      buf = await renderResumePdfCached(printUrl, `${tailoredId}|${template}|${order.join(",")}|${font}|${size}|${JSON.stringify(content)}`);
+      const font = t.profile.resumeFont ?? "sans";
+      const accent = t.profile.resumeAccent ?? "sky";
+      const printUrl = `${internalOrigin()}/print/${tailoredId}?template=${encodeURIComponent(template)}&order=${encodeURIComponent(order.join(","))}&font=${encodeURIComponent(font)}&accent=${encodeURIComponent(accent)}`;
+      buf = await renderResumePdfCached(printUrl, `${tailoredId}|${template}|${order.join(",")}|${font}|${accent}|${JSON.stringify(content)}`);
     }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Export failed." };

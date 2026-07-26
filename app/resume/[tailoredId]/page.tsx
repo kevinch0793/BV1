@@ -5,7 +5,7 @@ import { getSettings } from "@/lib/settings";
 import { ownedByProfileWhere } from "@/lib/owner";
 import { SavedResumeView } from "./SavedResumeView";
 import type { ResumeContent } from "@/lib/llm/schema";
-import { normalizeTemplate } from "@/components/templates";
+import { normalizeTemplate, templatesFor, DEFAULT_TEMPLATE } from "@/components/templates";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +13,11 @@ export default async function ResumeViewer({ params }: { params: Promise<{ tailo
   const { tailoredId } = await params;
   const t = await prisma.tailoredResume.findFirst({
     where: { id: tailoredId, ...(await ownedByProfileWhere()) },
-    include: { job: true, profile: { select: { clientId: true, templateId: true } } },
+    include: { job: true, profile: { select: { clientId: true, templateId: true, resumeFont: true, resumeAccent: true, client: { select: { email: true } } } } },
   });
   if (!t) notFound();
 
-  const { sectionOrder, defaultTemplate, resumeFont, resumeFontScale } = await getSettings(t.profile.clientId);
+  const { sectionOrder } = await getSettings(t.profile.clientId);
 
   return (
     <div className="space-y-4">
@@ -34,13 +34,14 @@ export default async function ResumeViewer({ params }: { params: Promise<{ tailo
       <SavedResumeView
         tailoredId={t.id}
         content={t.content as ResumeContent}
-        templateId={normalizeTemplate(t.profile.templateId ?? defaultTemplate)}
+        templateId={normalizeTemplate(t.profile.templateId ?? DEFAULT_TEMPLATE)}
         order={sectionOrder}
-        fontId={resumeFont}
-        fontScale={resumeFontScale}
+        fontId={t.profile.resumeFont ?? "sans"}
+        accentId={t.profile.resumeAccent ?? "sky"}
         fitBefore={t.fitBefore}
         fitAfter={t.fitAfter}
         fitDetail={t.fitDetail as FitDetail | null}
+        templates={templatesFor(t.profile.client.email)}
       />
     </div>
   );

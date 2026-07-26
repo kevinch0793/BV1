@@ -19,6 +19,9 @@ import { ResumeParser } from "./ResumeParser";
 import { CollapsibleItem } from "@/components/CollapsibleItem";
 import { DirtyForm } from "@/components/DirtyForm";
 import { ExperienceProjects } from "@/components/ExperienceProjects";
+import { ProfileTemplateCard } from "@/components/ProfileTemplateCard";
+import { templatesFor } from "@/components/templates";
+import { getSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +38,14 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
   if (!profile) notFound();
 
   const links = asLinks(profile.links);
+  const [{ sectionOrder }, siblings, owner] = await Promise.all([
+    getSettings(profile.clientId),
+    prisma.profile.findMany({
+      where: { ...(await profileWhere()), id: { not: profile.id } },
+      select: { label: true, templateId: true, resumeFont: true, resumeAccent: true },
+    }),
+    prisma.client.findUnique({ where: { id: profile.clientId }, select: { email: true } }),
+  ]);
 
   return (
     <div className="space-y-8">
@@ -83,6 +94,19 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
           </label>
           <button data-save className={saveBtn}>Save basics</button>
         </DirtyForm>
+      </Card>
+
+      {/* Resume template — per-profile style (template + font + color) */}
+      <Card title="Resume template" subtitle="Template, font, and accent color for this profile's résumés (preview, PDF & DOCX). Set individually per profile.">
+        <ProfileTemplateCard
+          profileId={profile.id}
+          initialTemplate={profile.templateId ?? "modern"}
+          initialFont={profile.resumeFont ?? "sans"}
+          initialAccent={profile.resumeAccent ?? "sky"}
+          order={sectionOrder}
+          templates={templatesFor(owner?.email)}
+          siblings={siblings.map((s) => ({ label: s.label, template: s.templateId ?? "modern", font: s.resumeFont ?? "sans", accent: s.resumeAccent ?? "sky" }))}
+        />
       </Card>
 
       {/* Experience */}

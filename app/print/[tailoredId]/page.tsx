@@ -14,7 +14,7 @@ export default async function PrintPage({
   searchParams,
 }: {
   params: Promise<{ tailoredId: string }>;
-  searchParams: Promise<{ template?: string; order?: string; font?: string; size?: string }>;
+  searchParams: Promise<{ template?: string; order?: string; font?: string; accent?: string }>;
 }) {
   const { tailoredId } = await params;
   const sp = await searchParams;
@@ -24,19 +24,19 @@ export default async function PrintPage({
   // (/api/export) enforces ownership; this is render-only HTML.
   const t = await prisma.tailoredResume.findUnique({
     where: { id: tailoredId },
-    include: { profile: { select: { clientId: true, templateId: true } } },
+    include: { profile: { select: { clientId: true, templateId: true, resumeFont: true, resumeAccent: true } } },
   });
   if (!t) notFound();
 
   const settings = await getSettings(t.profile.clientId);
   const template = normalizeTemplate(sp.template ?? t.profile.templateId ?? t.templateId);
   const order = sp.order ? parseSectionOrder(sp.order) : settings.sectionOrder;
-  const fontId = sp.font ?? settings.resumeFont;
-  const fontScale = sp.size ? Number(sp.size) : settings.resumeFontScale;
+  const fontId = sp.font ?? t.profile.resumeFont ?? "sans";
+  const accentId = sp.accent ?? t.profile.resumeAccent ?? "sky";
 
   return (
     <div className="print-sheet mx-auto">
-      <ResumePreview content={t.content as ResumeContent} template={template} order={order} fontId={fontId} fontScale={fontScale} />
+      <ResumePreview content={t.content as ResumeContent} template={template} order={order} fontId={fontId} accentId={accentId} />
     </div>
   );
 }

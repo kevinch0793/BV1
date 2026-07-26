@@ -85,7 +85,8 @@ model Settings {
   sectionOrder       String   @default("summary,experience,skills,education") // resume section render order
   defaultTemplate    String   @default("modern") // default resume template id
   resumeFont         String   @default("default") // resume font family id (default = template's own fonts)
-  resumeFontScale    Int      @default(100) // proportional whole-resume zoom % (Compact 90 … X-Large 120)
+  resumeAccent       String   @default("default") // resume accent color id (default = template's own colors)
+  resumeFontScale    Int      @default(100) // deprecated: font-size feature removed; column kept but unused
   tailoringModel     String   @default("claude-sonnet-4-6") // Claude model used for tailoring
   // Skills-section size: the resume fills to this range (drawing on the profile's
   // own skills + role-relevant defaults) even when the JD lists few skills.
@@ -108,7 +109,9 @@ model Profile {
   location  String?
   links     Json? // { linkedin, github, portfolio, ... }
   summary   String?
-  templateId String? // per-profile template override; null = use the client default
+  templateId   String? // per-profile resume template id; null = default ("modern")
+  resumeFont   String? // per-profile font family id; null = default
+  resumeAccent String? // per-profile accent color id; null = default
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

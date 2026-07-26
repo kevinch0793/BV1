@@ -14,7 +14,12 @@ export type TemplateId =
   | "rose"
   | "amber"
   | "violet"
-  | "stone";
+  | "stone"
+  | "compact"
+  | "spacious"
+  | "ink"
+  | "classic"
+  | "terminal";
 
 export const DEFAULT_TEMPLATE: TemplateId = "modern";
 
@@ -37,6 +42,8 @@ type Theme = {
   sectionTitle: string;
   /** background color of the hairline used by the sideRule variant */
   rule?: string;
+  /** section title is a filled bar/chip → accent recolors its background, not text */
+  sectionFill?: boolean;
   sectionWrap: string;
   role: string;
   company: string;
@@ -101,6 +108,7 @@ const THEMES: Record<TemplateId, Theme> = {
     sectionWrap: "mb-3",
     sectionTitle:
       "mb-1.5 inline-block rounded-sm bg-neutral-900 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white",
+    sectionFill: true,
     role: "font-bold text-neutral-900",
     company: "text-[12px] font-medium text-neutral-700",
     date: "text-[11px] text-neutral-500",
@@ -293,43 +301,187 @@ const THEMES: Record<TemplateId, Theme> = {
     date: "text-[11px] text-stone-400",
     subgroupTitle: "mt-1 font-semibold italic text-stone-700",
   },
+  compact: {
+    id: "compact",
+    label: "Compact",
+    description: "Dense, left-aligned — fits more on the page.",
+    root: "font-sans text-[11px] leading-tight text-neutral-800 text-left",
+    header: "left",
+    headerWrap: "mb-2",
+    name: "text-xl font-bold tracking-tight text-neutral-900",
+    title: "text-[12px] font-medium text-neutral-600",
+    contactWrap: "mt-0.5 flex flex-wrap gap-x-2 gap-y-0",
+    contact: "text-[10.5px] text-neutral-500",
+    link: "text-neutral-700 underline",
+    sectionVariant: "plain",
+    sectionWrap: "mb-2",
+    sectionTitle: "mb-0.5 text-[10.5px] font-bold uppercase tracking-[0.14em] text-neutral-500",
+    role: "font-semibold text-neutral-900",
+    company: "text-[11px] text-neutral-600",
+    date: "text-[10.5px] text-neutral-500",
+    subgroupTitle: "mt-0.5 font-semibold text-neutral-800",
+  },
+  spacious: {
+    id: "spacious",
+    label: "Spacious",
+    description: "Airy, left-aligned, generous whitespace.",
+    root: "font-sans text-[13px] leading-loose text-neutral-700 text-left",
+    header: "left",
+    headerWrap: "mb-5",
+    name: "text-3xl font-semibold tracking-tight text-neutral-900",
+    title: "text-[15px] text-neutral-500",
+    contactWrap: "mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5",
+    contact: "text-[12px] text-neutral-500",
+    link: "text-neutral-700 underline",
+    sectionVariant: "plain",
+    sectionWrap: "mb-5",
+    sectionTitle: "mb-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-neutral-400",
+    role: "font-semibold text-neutral-900",
+    company: "text-[12.5px] text-neutral-500",
+    date: "text-[11.5px] text-neutral-400",
+    subgroupTitle: "mt-1.5 font-medium text-neutral-700",
+  },
+  ink: {
+    id: "ink",
+    label: "Ink",
+    description: "Full-width dark section bars, editorial contrast.",
+    root: "font-sans text-[12.5px] leading-snug text-neutral-800 text-justify",
+    header: "split",
+    headerWrap: "mb-3 flex items-end justify-between gap-3 border-b-4 border-neutral-900 pb-2",
+    name: "text-[26px] font-extrabold tracking-tight text-neutral-900",
+    title: "text-sm font-semibold text-neutral-500",
+    contactWrap: "flex flex-col items-end gap-0.5 text-right",
+    contact: "text-[11px] text-neutral-600",
+    link: "text-neutral-900 underline",
+    sectionVariant: "plain",
+    sectionWrap: "mb-3",
+    sectionTitle: "mb-1.5 block bg-neutral-800 px-2 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-white",
+    sectionFill: true,
+    role: "font-bold text-neutral-900",
+    company: "text-[12px] font-medium text-neutral-600",
+    date: "text-[11px] text-neutral-500",
+    subgroupTitle: "mt-1 font-bold text-neutral-900",
+  },
+  classic: {
+    id: "classic",
+    label: "Classic",
+    description: "Traditional serif, centered name, ruled headings.",
+    root: "font-serif text-[12.5px] leading-snug text-neutral-800 text-left",
+    header: "center",
+    headerWrap: "mb-3 text-center",
+    name: "text-3xl font-bold tracking-tight text-neutral-900",
+    title: "text-sm text-neutral-600",
+    contactWrap: "mt-1 flex flex-wrap justify-center gap-x-3 gap-y-0.5",
+    contact: "text-[11.5px] text-neutral-600",
+    link: "text-neutral-800 underline",
+    sectionVariant: "plain",
+    sectionWrap: "mb-3",
+    sectionTitle: "mb-1.5 border-b border-neutral-800 pb-0.5 text-[12px] font-bold uppercase tracking-[0.14em] text-neutral-900",
+    role: "font-semibold text-neutral-900",
+    company: "text-[12px] text-neutral-700",
+    date: "text-[11px] text-neutral-500",
+    subgroupTitle: "mt-1 font-semibold text-neutral-800",
+  },
+  terminal: {
+    id: "terminal",
+    label: "Terminal",
+    description: "Full monospace, left-aligned, hash-marked sections.",
+    root: "font-mono text-[11.5px] leading-snug text-neutral-800 text-left",
+    header: "left",
+    headerWrap: "mb-3",
+    name: "text-2xl font-bold tracking-tight text-neutral-900",
+    title: "text-[13px] text-green-700",
+    contactWrap: "mt-1 flex flex-wrap gap-x-3 gap-y-0.5",
+    contact: "text-[10.5px] text-neutral-600",
+    link: "text-green-700 underline",
+    sectionVariant: "plain",
+    sectionWrap: "mb-3",
+    sectionTitle: "mb-1 text-[11px] font-bold uppercase tracking-[0.12em] text-green-700 before:text-green-500 before:content-['#_']",
+    role: "font-bold text-neutral-900",
+    company: "text-[11px] text-green-700",
+    date: "text-[10.5px] text-neutral-500",
+    subgroupTitle: "mt-1 font-bold text-green-700",
+  },
 };
 
-export const TEMPLATES: { id: TemplateId; label: string; description: string }[] = Object.values(
-  THEMES,
-).map((t) => ({ id: t.id, label: t.label, description: t.description }));
+export type TemplateOption = { id: TemplateId; label: string; description: string };
+
+export const TEMPLATES: TemplateOption[] = Object.values(THEMES).map((t) => ({
+  id: t.id,
+  label: t.label,
+  description: t.description,
+}));
+
+// Templates reserved to specific accounts. Everyone else doesn't see them in the
+// pickers, and can't have them persisted (see the settings/profile actions).
+const RESERVED_TEMPLATE_IDS = new Set<TemplateId>(["bold", "tech", "violet", "slate"]);
+const TEMPLATE_EXEMPT_EMAILS = new Set<string>(["anustariq45@gmail.com"]);
+
+/** Whether the given account may use the reserved templates. */
+export function canUseReservedTemplates(email: string | null | undefined): boolean {
+  return !!email && TEMPLATE_EXEMPT_EMAILS.has(email.trim().toLowerCase());
+}
+
+/** Template picker options visible to the given account (reserved ones filtered out). */
+export function templatesFor(email: string | null | undefined): TemplateOption[] {
+  if (canUseReservedTemplates(email)) return TEMPLATES;
+  return TEMPLATES.filter((t) => !RESERVED_TEMPLATE_IDS.has(t.id));
+}
+
+/** Whether the given account is allowed to select/persist a specific template id. */
+export function isTemplateAllowed(id: string | null | undefined, email: string | null | undefined): boolean {
+  if (!id) return true;
+  return canUseReservedTemplates(email) || !RESERVED_TEMPLATE_IDS.has(id as TemplateId);
+}
 
 // Resume font family choices (Settings → Template). "default" keeps each
 // template's own mixed fonts; any other choice applies one family to the whole
 // resume via the `.rs-font-override` rule in globals.css. Stacks resolve to the
 // loaded Geist fonts or web-safe system fonts, so preview and PDF match.
 export const RESUME_FONTS = [
-  { id: "default", label: "Template default", stack: "" },
   { id: "sans", label: "Sans (Geist)", stack: "var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif" },
   { id: "arial", label: "Arial", stack: "Arial, Helvetica, sans-serif" },
-  { id: "georgia", label: "Georgia (serif)", stack: "Georgia, 'Times New Roman', serif" },
+  { id: "helvetica", label: "Helvetica", stack: "Helvetica, Arial, sans-serif" },
+  { id: "verdana", label: "Verdana", stack: "Verdana, Geneva, sans-serif" },
+  { id: "tahoma", label: "Tahoma", stack: "Tahoma, Geneva, Verdana, sans-serif" },
+  { id: "trebuchet", label: "Trebuchet MS", stack: "'Trebuchet MS', 'Segoe UI', Tahoma, sans-serif" },
+  { id: "calibri", label: "Calibri", stack: "Calibri, 'Segoe UI', Candara, Arial, sans-serif" },
+  { id: "georgia", label: "Georgia", stack: "Georgia, 'Times New Roman', serif" },
   { id: "times", label: "Times New Roman", stack: "'Times New Roman', Times, serif" },
+  { id: "garamond", label: "Garamond", stack: "Garamond, 'EB Garamond', 'Times New Roman', serif" },
+  { id: "palatino", label: "Palatino", stack: "'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif" },
+  { id: "cambria", label: "Cambria", stack: "Cambria, 'Hoefler Text', Georgia, serif" },
   { id: "mono", label: "Mono (Geist)", stack: "var(--font-geist-mono), ui-monospace, monospace" },
+  { id: "courier", label: "Courier New", stack: "'Courier New', Courier, monospace" },
 ] as const;
 
-// Font-size presets → a proportional zoom % applied to the whole resume.
-export const FONT_SIZES = [
-  { id: 90, label: "Compact" },
-  { id: 100, label: "Normal" },
-  { id: 110, label: "Large" },
-  { id: 120, label: "X-Large" },
+// Accent color presets (Settings → Template). "default" keeps each template's own
+// colors; any other choice recolors the accent elements (section titles, links,
+// company names, subtitle, header rule) via the `--rs-accent` var + `.rs-accent-on`
+// rules in globals.css. A no-op at "default", so an untouched resume is unchanged.
+export const ACCENT_COLORS = [
+  { id: "sky", label: "Sky", value: "#0369a1" },
+  { id: "blue", label: "Blue", value: "#1d4ed8" },
+  { id: "navy", label: "Navy", value: "#1e3a8a" },
+  { id: "teal", label: "Teal", value: "#0f766e" },
+  { id: "emerald", label: "Emerald", value: "#047857" },
+  { id: "violet", label: "Violet", value: "#6d28d9" },
+  { id: "rose", label: "Rose", value: "#be123c" },
+  { id: "amber", label: "Amber", value: "#b45309" },
+  { id: "slate", label: "Slate", value: "#334155" },
+  { id: "black", label: "Black", value: "#111827" },
 ] as const;
 
-export const DEFAULT_FONT = "default";
-export const DEFAULT_FONT_SCALE = 100;
+export const DEFAULT_FONT = "sans";
+export const DEFAULT_ACCENT = "sky";
 
 export function resumeFontStack(id?: string | null): string {
   return RESUME_FONTS.find((f) => f.id === id)?.stack ?? "";
 }
 
-/** Clamp a stored scale to a known preset (else Normal). */
-export function normalizeFontScale(n: number | null | undefined): number {
-  return FONT_SIZES.some((s) => s.id === n) ? (n as number) : DEFAULT_FONT_SCALE;
+/** Hex value for an accent id, or "" for the template default (no override). */
+export function resumeAccentValue(id?: string | null): string {
+  return ACCENT_COLORS.find((c) => c.id === id)?.value ?? "";
 }
 
 function dateRange(a?: string | null, b?: string | null): string {
@@ -344,7 +496,7 @@ function ContactLine({ t, c }: { t: Theme; c: ResumeContent["contact"] }) {
         <span key={`p-${i}`}>{p}</span>
       ))}
       {c.links.map((l, i) => (
-        <a key={`link-${i}`} href={l.url} className={t.link}>
+        <a key={`link-${i}`} href={l.url} className={`${t.link} rs-ac`}>
           {l.label}
         </a>
       ))}
@@ -356,10 +508,10 @@ function ContactLine({ t, c }: { t: Theme; c: ResumeContent["contact"] }) {
 // flex justify-between (side by side) for split.
 function Header({ t, r }: { t: Theme; r: ResumeContent }) {
   return (
-    <header className={t.headerWrap}>
+    <header className={`${t.headerWrap} rs-ac-bd`}>
       <div>
         <h1 className={t.name}>{r.name}</h1>
-        {r.title && <p className={t.title}>{r.title}</p>}
+        {r.title && <p className={`${t.title} rs-ac`}>{r.title}</p>}
       </div>
       <ContactLine t={t} c={r.contact} />
     </header>
@@ -371,11 +523,11 @@ function Section({ t, title, children }: { t: Theme; title: string; children: Re
     <section className={t.sectionWrap}>
       {t.sectionVariant === "sideRule" ? (
         <div className="mb-1 flex items-center gap-2">
-          <h2 className={t.sectionTitle}>{title}</h2>
-          <span className={`h-px flex-1 ${t.rule ?? "bg-neutral-300"}`} />
+          <h2 className={`${t.sectionTitle} ${t.sectionFill ? "rs-ac-bg" : "rs-ac"}`}>{title}</h2>
+          <span className={`h-px flex-1 ${t.rule ?? "bg-neutral-300"} rs-ac-bg`} />
         </div>
       ) : (
-        <h2 className={t.sectionTitle}>{title}</h2>
+        <h2 className={`${t.sectionTitle} ${t.sectionFill ? "rs-ac-bg" : "rs-ac"}`}>{title}</h2>
       )}
       {children}
     </section>
@@ -404,7 +556,7 @@ function ExperienceGroups({ t, projects }: { t: Theme; projects: ResumeContent["
       {groups.map((g, i) => (
         <div key={i} className="mt-1">
           {(g.name || g.type) && (
-            <div className={t.subgroupTitle}>{`${g.name}${g.type ? ` - ${g.type}` : ""}`}</div>
+            <div className={`${t.subgroupTitle} rs-ac`}>{`${g.name}${g.type ? ` - ${g.type}` : ""}`}</div>
           )}
           <Bullets items={g.bullets} />
         </div>
@@ -432,7 +584,7 @@ function ExperienceBlock({ t, r }: { t: Theme; r: ResumeContent }) {
             <span className={t.role}>{e.role}</span>
             <span className={t.date}>{dateRange(e.startDate, e.endDate)}</span>
           </div>
-          <div className={t.company}>{`${e.company}${e.location ? ` · ${e.location}` : ""}`}</div>
+          <div className={`${t.company} rs-ac`}>{`${e.company}${e.location ? ` · ${e.location}` : ""}`}</div>
           <ExperienceGroups t={t} projects={e.projects} />
         </div>
       ))}
@@ -475,13 +627,13 @@ function ResumeDoc({
   r,
   order,
   fontId,
-  fontScale,
+  accentId,
 }: {
   t: Theme;
   r: ResumeContent;
   order: SectionKey[];
   fontId?: string;
-  fontScale?: number;
+  accentId?: string;
 }) {
   const blocks: Record<SectionKey, React.ReactNode> = {
     summary: <SummaryBlock key="summary" t={t} r={r} />,
@@ -490,17 +642,17 @@ function ResumeDoc({
     education: <EducationBlock key="education" t={t} r={r} />,
   };
   // Optional client-wide overrides (Settings → Template): a global font family
-  // (forced over the template's font classes via the `.rs-font-override` rule)
-  // and a proportional whole-resume zoom. Both are no-ops at their defaults, so
-  // an untouched resume renders exactly as before.
+  // (forced over the template's font classes via `.rs-font-override`) and an accent
+  // color (recolors accent elements via `.rs-accent-on`). Both are no-ops at their
+  // defaults, so an untouched resume renders exactly as its template defines.
   const stack = resumeFontStack(fontId);
-  const scale = fontScale ?? DEFAULT_FONT_SCALE;
-  const style: Record<string, string | number> = {};
+  const accent = resumeAccentValue(accentId);
+  const style: Record<string, string> = {};
   if (stack) style["--rs-font"] = stack;
-  if (scale !== DEFAULT_FONT_SCALE) style.zoom = scale / 100;
+  if (accent) style["--rs-accent"] = accent;
   return (
     <div
-      className={`${t.root}${stack ? " rs-font-override" : ""}`}
+      className={`${t.root}${stack ? " rs-font-override" : ""}${accent ? " rs-accent-on" : ""}`}
       style={Object.keys(style).length ? (style as React.CSSProperties) : undefined}
     >
       <Header t={t} r={r} />
@@ -514,18 +666,18 @@ export function ResumePreview({
   template,
   order = SECTION_KEYS,
   fontId,
-  fontScale,
+  accentId,
 }: {
   content: ResumeContent;
   template: TemplateId;
   order?: SectionKey[];
   fontId?: string;
-  fontScale?: number;
+  accentId?: string;
 }) {
   // Defensive: strip any en/em dashes (covers manual edits + older saved data).
   const r = deepStripDashes(content);
   const theme = THEMES[template] ?? THEMES[DEFAULT_TEMPLATE];
-  return <ResumeDoc t={theme} r={r} order={order} fontId={fontId} fontScale={fontScale} />;
+  return <ResumeDoc t={theme} r={r} order={order} fontId={fontId} accentId={accentId} />;
 }
 
 /** Normalize a possibly-legacy stored template id to a current one. */

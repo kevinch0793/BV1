@@ -4,7 +4,6 @@ import { requireClient } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { DirtyForm } from "@/components/DirtyForm";
 import { SectionOrderEditor } from "@/components/SectionOrderEditor";
-import { TemplateSettings } from "@/components/TemplateSettings";
 import { ApiTokenPanel } from "@/components/ApiTokenPanel";
 
 export const dynamic = "force-dynamic";
@@ -66,20 +65,6 @@ export default async function SettingsPage() {
           </label>
           <button data-save className={saveBtn}>Save model</button>
         </DirtyForm>
-      </section>
-
-      {/* Default template + live preview */}
-      <section className="rounded-xl border border-neutral-200 bg-white p-5">
-        <h2 className="text-lg font-semibold text-neutral-900">Template</h2>
-        <p className="mb-3 text-xs text-neutral-500">
-          The template used for every resume — preview, download (PDF &amp; DOCX), and the dashboard Apply action. Changing it here applies everywhere.
-        </p>
-        <TemplateSettings
-          initial={settings.defaultTemplate}
-          initialFont={settings.resumeFont}
-          initialScale={settings.resumeFontScale}
-          order={settings.sectionOrder}
-        />
       </section>
 
       {/* Skills section size */}
