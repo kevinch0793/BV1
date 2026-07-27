@@ -111,6 +111,7 @@ export function PipelineDashboard({
     () => jobs.map((j, i) => [j, i] as const).sort(([a, ai], [b, bi]) => sortRank(a) - sortRank(b) || ai - bi).map(([j]) => j),
     [jobs],
   );
+  const appliedCount = useMemo(() => jobs.filter((j) => j.applyStatus === "applied").length, [jobs]);
 
   // On load, self-heal: resume the pipeline if it's already running, or restart
   // it if there's unfinished work (pending jobs, or jobs left stuck in
@@ -292,7 +293,10 @@ export function PipelineDashboard({
       {/* Job table */}
       <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 px-4 py-2">
-          <span className="text-sm font-medium text-neutral-700">Jobs ({jobs.length})</span>
+          <span className="text-sm font-medium text-neutral-700">
+            Jobs ({jobs.length})
+            {appliedCount > 0 && <span className="ml-1.5 font-normal text-emerald-700">· {appliedCount} applied</span>}
+          </span>
           {selected.size > 0 && (
             <div className="flex items-center gap-2">
               <span className="text-xs text-neutral-500">{selected.size} selected</span>
