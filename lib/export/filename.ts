@@ -1,32 +1,19 @@
-// Export filename, e.g. "BereketAbraham_Resume_StaffSof_Spark_26.pdf":
-// firstlast + "Resume" + role (first ~8 letters) + company (first word, the one
-// you're applying to) + 2-digit year. Different jobs differ by their role +
-// company; missing role/company are simply omitted.
-function alnum(s: string): string {
-  return s.normalize("NFKD").replace(/[^a-zA-Z0-9]+/g, "");
+// Export filename: a fixed "First Last.pdf" per candidate (first + last name token
+// only — middle names dropped). Deliberately excludes role/company/date so it's the
+// same name every time, letting a re-download overwrite the previous file instead of
+// piling up "… (1).pdf" copies. Only OS-illegal filename characters are stripped;
+// spaces and letters are kept.
+function sanitize(s: string): string {
+  return s
+    .replace(/[\\/:*?"<>|\x00-\x1f]/g, "") // characters illegal in file names
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-export function resumeFileName(
-  name: string,
-  format: string,
-  opts?: { role?: string | null; company?: string | null; year?: number },
-): string {
+export function resumeFileName(name: string, format: string): string {
   const tokens = (name || "").trim().split(/\s+/).filter(Boolean);
   const first = tokens[0] ?? "";
   const last = tokens.length > 1 ? tokens[tokens.length - 1] : "";
-  const who = alnum(first + last) || "Resume"; // firstlast
-
-  const parts = [who, "Resume"];
-
-  const role = opts?.role ? alnum(opts.role).slice(0, 8) : ""; // first ~8 letters
-  if (role) parts.push(role);
-
-  // Company you're applying to: first word only.
-  const firstWord = (opts?.company ?? "").trim().split(/\s+/)[0] ?? "";
-  const company = alnum(firstWord);
-  if (company) parts.push(company);
-
-  const yy = String((opts?.year ?? new Date().getFullYear()) % 100).padStart(2, "0");
-
-  return `${parts.join("_")}_${yy}.${format}`;
+  const who = sanitize([first, last].filter(Boolean).join(" ")) || "Resume";
+  return `${who}.${format}`;
 }

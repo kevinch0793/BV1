@@ -37,6 +37,18 @@ The toolbar icon also shows a **"!"** badge until it's configured.
 
 (Clicking the toolbar icon still works as a fallback.)
 
+## Resume downloads (auto-overwrite)
+When you click **Apply** on the app dashboard, your tailored resume downloads as a
+fixed **`First Last.pdf`** (same name every time). This extension makes each new
+download **silently replace** the previous `First Last.pdf` in your Downloads folder —
+no `" (1)"` copies and no overwrite dialog — so you always have one clean file to
+upload. Only downloads from your configured **App URL**'s export endpoint are affected;
+all other downloads are left alone.
+
+This uses the `downloads` permission, added in v1.1.0 — after updating, **Reload** the
+extension at `chrome://extensions` (Developer mode → the extension's ⟳ Reload) so the
+new permission takes effect.
+
 ## Notes & limits
 - Works best on standard ATS (Greenhouse, Lever, Ashby). Heavily-scripted or deeply
   iframed forms (e.g. Workday) can be hit-or-miss — it does scan inside iframes.

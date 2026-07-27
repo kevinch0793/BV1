@@ -48,7 +48,7 @@ export async function saveResumeToDownloads(
   const template = normalizeTemplate(override?.template ?? t.profile.templateId ?? DEFAULT_TEMPLATE);
   const order = override?.order ? parseSectionOrder(override.order) : settings.sectionOrder;
   const content = t.content as ResumeContent;
-  const filename = resumeFileName(content.name, format, { role: t.job?.role, company: t.job?.company });
+  const filename = resumeFileName(content.name, format);
 
   let buf: Buffer;
   try {

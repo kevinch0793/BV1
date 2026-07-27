@@ -9,6 +9,26 @@ async function getConfig() {
   return { appUrl: (appUrl || "").replace(/\/+$/, ""), token: token || "" };
 }
 
+// --- Resume downloads: keep the server's "First Last.pdf" name and OVERWRITE the
+// previous file (no "(1)" suffix, no dialog) so the user always has one clean file to
+// upload. Registered at the top level so the MV3 service worker wakes for the event.
+// Only touches downloads from the configured app's /api/export/ endpoint; every other
+// download is left to the browser's default behavior.
+chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+  const url = item.finalUrl || item.url || "";
+  if (!url.includes("/api/export/")) return; // not an app resume download → default
+  chrome.storage.sync
+    .get(["appUrl"])
+    .then(({ appUrl }) => {
+      const base = (appUrl || "").replace(/\/+$/, "");
+      if (base && !url.startsWith(base)) return suggest(); // different origin → don't touch
+      const name = (item.filename || "").split(/[\\/]/).pop() || "resume.pdf";
+      suggest({ filename: name, conflictAction: "overwrite" });
+    })
+    .catch(() => suggest());
+  return true; // suggest() is called asynchronously
+});
+
 // --- Injected into the page: find open-ended fields + their question labels. ---
 function scrape() {
   const visible = (el) => !!(el.offsetParent || el.getClientRects().length) && !el.disabled && !el.readOnly;

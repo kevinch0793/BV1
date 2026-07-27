@@ -37,7 +37,7 @@ export async function GET(
   const order = orderParam ? parseSectionOrder(orderParam) : settings.sectionOrder;
 
   const content = t.content as ResumeContent;
-  const filename = resumeFileName(content.name, format, { role: t.job?.role, company: t.job?.company });
+  const filename = resumeFileName(content.name, format);
 
   try {
     if (format === "docx") {
