@@ -37,6 +37,7 @@ export async function generateStructured<T>({
   schema,
   prompt,
   content,
+  cachePrefix,
   system,
   model = DEFAULT_MODEL,
   maxTokens = 16000,
@@ -46,25 +47,55 @@ export async function generateStructured<T>({
   prompt?: string;
   /** Structured user content blocks (e.g. a PDF document + instruction). */
   content?: Anthropic.MessageParam["content"];
+  /**
+   * A static leading chunk of the USER message to prompt-cache (e.g. the
+   * candidate profile + base resume, identical across all of one profile's
+   * jobs). When set, the user message becomes [cached prefix, then `prompt`],
+   * so repeat calls bill the prefix as a cache read. Byte-identical content —
+   * only its position (first) and the cache hint change.
+   */
+  cachePrefix?: string;
   system?: string;
   model?: string;
   maxTokens?: number;
 }): Promise<T> {
   const t0 = Date.now();
-  let response;
-  try {
-    response = await getClient().messages.parse({
+  // Cache the (large, static) system prompt: mark it ephemeral so repeat calls
+  // bill it as a cache READ (~10% cost) instead of fresh input, which also eases
+  // the input-tokens/min pressure that throttles bursts. Caching is transparent —
+  // the model receives the identical prompt, so the output is byte-for-byte the
+  // same. Anthropic ignores cache_control on sub-threshold blocks, so a small
+  // system prompt from any other caller is unaffected.
+  const systemParam: Array<Anthropic.TextBlockParam> | undefined = system
+    ? [{ type: "text", text: system, cache_control: { type: "ephemeral" } }]
+    : undefined;
+  // When a cachePrefix is given, split the user message into [cached static
+  // block, dynamic block] so repeat calls with the same prefix bill it as a cache
+  // read. Otherwise use the caller's structured content or plain prompt as-is.
+  const userContent: Anthropic.MessageParam["content"] =
+    cachePrefix != null
+      ? [
+          { type: "text", text: cachePrefix, cache_control: { type: "ephemeral" } },
+          { type: "text", text: prompt ?? "" },
+        ]
+      : (content ?? prompt ?? "");
+  // .withResponse() returns the IDENTICAL parsed message in `data` plus the raw
+  // HTTP `response`, so we can read the anthropic-ratelimit-* headers (to tune the
+  // tailor concurrency against the real tier) without changing the request at all.
+  const { data: response, response: httpRes } = await getClient()
+    .messages.parse({
       model,
       max_tokens: maxTokens,
-      system,
-      messages: [{ role: "user", content: content ?? prompt ?? "" }],
+      system: systemParam,
+      messages: [{ role: "user", content: userContent }],
       output_config: { format: zodOutputFormat(schema) },
+    })
+    .withResponse()
+    .catch((e) => {
+      const status = (e as { status?: number })?.status;
+      if (status === 429) console.warn(`[llm] anthropic 429 (rate-limited) after ${Date.now() - t0}ms`);
+      throw e;
     });
-  } catch (e) {
-    const status = (e as { status?: number })?.status;
-    if (status === 429) console.warn(`[llm] anthropic 429 (rate-limited) after ${Date.now() - t0}ms`);
-    throw e;
-  }
 
   const ms = Date.now() - t0;
   recordUsage({
@@ -74,9 +105,17 @@ export async function generateStructured<T>({
     outputTokens: response.usage?.output_tokens ?? 0,
     ms,
   });
-  if (process.env.LLM_DEBUG) {
-    console.log(`[llm] ${model} ${ms}ms in=${response.usage?.input_tokens ?? "?"} out=${response.usage?.output_tokens ?? "?"}tok cap=${maxTokens} stop=${response.stop_reason}`);
-  }
+  // Concise per-call visibility for tuning TAILOR_CONCURRENCY: rate-limit remaining
+  // (should stay > 0 — if it hits 0 we're at the tier ceiling) + cache hit tokens
+  // (cache_read > 0 on the 2nd+ call of a burst confirms the system cache is live).
+  // Low volume (~1–2/min), so logged every call; gate behind LLM_DEBUG once tuned.
+  const h = httpRes?.headers;
+  const rl = h
+    ? `in-rem=${h.get("anthropic-ratelimit-input-tokens-remaining") ?? "?"} out-rem=${h.get("anthropic-ratelimit-output-tokens-remaining") ?? "?"} req-rem=${h.get("anthropic-ratelimit-requests-remaining") ?? "?"} retry-after=${h.get("retry-after") ?? "-"}`
+    : "unavailable";
+  console.log(
+    `[llm] ${model} ${ms}ms in=${response.usage?.input_tokens ?? "?"} out=${response.usage?.output_tokens ?? "?"} cache_read=${response.usage?.cache_read_input_tokens ?? 0} cache_write=${response.usage?.cache_creation_input_tokens ?? 0} cap=${maxTokens} stop=${response.stop_reason} | rl ${rl}`,
+  );
   if (response.stop_reason === "max_tokens") {
     console.warn(`[llm] ${model} hit max_tokens cap (${maxTokens}) — output truncated`);
   }

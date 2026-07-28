@@ -6,6 +6,7 @@ import { extractJdSkills, scoreFit, profileToText, type JdSkills } from "@/lib/l
 import { getCustomInstructions, type SkillsConfig } from "@/lib/settings";
 import { pruneOldActivity } from "@/lib/retention";
 import { withUsage, withKind } from "@/lib/llm/usage";
+import { FairLimiter } from "@/lib/fairLimiter";
 import type { JobForLLM } from "@/lib/llm/prompts";
 
 // clientId is captured at the request-context action entry (startPipeline) and
@@ -63,57 +64,20 @@ const GLOBAL_CONCURRENCY = Math.max(1, Number(process.env.PIPELINE_CONCURRENCY) 
 // giving each freed slot to the waiting profile that currently holds the FEWEST
 // slots. So a profile that dumps 500 URLs can't starve a profile with 8 — every
 // active profile gets a roughly equal share (max-min fairness), while a lone
-// profile still uses all the slots (no waste).
-let activeJobs = 0;
-const activeByProfile = new Map<string, number>(); // profileId -> slots currently in use
-const waitQueues = new Map<string, Array<() => void>>(); // profileId -> FIFO of slot-grant callbacks
+// profile still uses all the slots (no waste). Keyed on profileId.
+const globalLimiter = new FairLimiter(GLOBAL_CONCURRENCY);
 
-// The waiting profile holding the fewest slots (ties: earliest to start waiting).
-function fewestLoadedWaiting(): string | null {
-  let best: string | null = null;
-  let bestActive = Infinity;
-  for (const [pid, q] of waitQueues) {
-    if (!q.length) continue;
-    const a = activeByProfile.get(pid) ?? 0;
-    if (a < bestActive) {
-      bestActive = a;
-      best = pid;
-    }
-  }
-  return best;
-}
-
-// Grant slots to waiting profiles (fairest first) until the global cap is hit.
-function pump(): void {
-  while (activeJobs < GLOBAL_CONCURRENCY) {
-    const pid = fewestLoadedWaiting();
-    if (!pid) break;
-    const q = waitQueues.get(pid)!;
-    const grant = q.shift()!;
-    if (!q.length) waitQueues.delete(pid);
-    activeJobs++;
-    activeByProfile.set(pid, (activeByProfile.get(pid) ?? 0) + 1);
-    grant(); // wake the waiter — its slot is already accounted for
-  }
-}
-
-async function withSlot<T>(profileId: string, fn: () => Promise<T>): Promise<T> {
-  await new Promise<void>((resolve) => {
-    const q = waitQueues.get(profileId);
-    if (q) q.push(resolve);
-    else waitQueues.set(profileId, [resolve]);
-    pump();
-  });
-  try {
-    return await fn();
-  } finally {
-    activeJobs--;
-    const left = (activeByProfile.get(profileId) ?? 1) - 1;
-    if (left <= 0) activeByProfile.delete(profileId);
-    else activeByProfile.set(profileId, left);
-    pump();
-  }
-}
+// A SECOND, tighter fair limiter around only the Anthropic tailor call — the one
+// rate-limited stage. Fetch + jd_skills (both OpenAI) finish fast and then ~15–20
+// jobs used to hit Sonnet at once, bursting past the account's per-minute token
+// limit; the SDK then sat in 429 back-off (turning a ~30s call into minutes). Cap
+// the concurrent tailors so they stay under the tier and each finishes quickly,
+// and share those scarce permits fairly across profiles (same fewest-loaded-first
+// rule). Start at 3; tune via TAILOR_CONCURRENCY using the rate-limit headers now
+// logged in anthropic.ts. This changes only *how many* tailor calls run at once —
+// not the model, prompt, or params — so tailoring quality is unchanged.
+const TAILOR_CONCURRENCY = Math.max(1, Number(process.env.TAILOR_CONCURRENCY) || 3);
+const tailorLimiter = new FairLimiter(TAILOR_CONCURRENCY);
 
 async function loop(profileId: string): Promise<void> {
   const profile = await prisma.profile.findUnique({
@@ -136,7 +100,7 @@ async function loop(profileId: string): Promise<void> {
     // deleted mid-flight → P2025) is swallowed so it never crashes the loop.
     await Promise.all(
       jobs.map((j) =>
-        withSlot(profileId, () => processJob(profileId, j.id, canTailor)).catch((e) => {
+        globalLimiter.withSlot(profileId, () => processJob(profileId, j.id, canTailor)).catch((e) => {
           console.error(`[pipeline] job ${j.id} failed:`, e instanceof Error ? e.message : e);
         }),
       ),
@@ -269,17 +233,22 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
     // nothing) — re-extract those so they get the new categorization.
     const stored = parsed.atsSkills && Array.isArray(parsed.atsSkills.hardSkills) ? parsed.atsSkills : null;
     const skills = stored ?? (await withKind("jd_skills", () => extractJdSkills(jobFields)).catch(() => null));
-    const content = await tailorResume({
-      mode,
-      profile: profileForLLM,
-      job: jobFields,
-      baseResume: profile.baseResume?.rawText,
-      instructions: opts.instructions,
-      customInstructions,
-      model: opts.model,
-      atsSkills: skills,
-      skills: opts.skills,
-    });
+    // Only the Anthropic tailor call goes through the tailor limiter (fetch +
+    // jd_skills above are OpenAI and stay outside it). Keyed on profileId so the
+    // scarce tailor permits are shared fairly across profiles.
+    const content = await tailorLimiter.withSlot(job.profileId, () =>
+      tailorResume({
+        mode,
+        profile: profileForLLM,
+        job: jobFields,
+        baseResume: profile.baseResume?.rawText,
+        instructions: opts.instructions,
+        customInstructions,
+        model: opts.model,
+        atsSkills: skills,
+        skills: opts.skills,
+      }),
+    );
     const beforeText = profile.baseResume?.rawText || profileToText(profileForLLM);
     const fit = scoreFit(skills, jobFields.role ?? "", beforeText, content);
     if (process.env.LLM_DEBUG) console.log(`[pipeline] tailor+ats job ${jobId} ${Date.now() - t0}ms`);

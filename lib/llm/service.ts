@@ -102,7 +102,7 @@ export async function tailorResume(args: {
 
   // Tailoring runs on Claude (extraction stays on OpenAI). Claude follows the
   // volume/format guidelines (4-7 bullets/subgroup, no cliché openers) reliably.
-  const content = await tailorViaProvider(built.system, built.prompt, args.model);
+  const content = await tailorViaProvider(built, args.model);
   // Normalize en/em dashes to plain hyphens (humans don't type the long ones),
   // then drop any bullets duplicated across a company's subgroups.
   return dedupeExperienceProjects(deepStripDashes(content));
@@ -111,11 +111,17 @@ export async function tailorResume(args: {
 // Tailoring runs on Anthropic (Claude). A tailored resume is ~1.2-2k output
 // tokens (measured); the 4000 cap stays tight so many calls fit the per-minute
 // budget. The Anthropic SDK retries transient 429s (maxRetries in anthropic.ts).
-async function tailorViaProvider(system: string, prompt: string, model?: string): Promise<ResumeContent> {
+// userStatic (profile + base resume) is passed as cachePrefix so all of one
+// profile's jobs reuse it as a cache read instead of re-billing it every time.
+async function tailorViaProvider(
+  built: { system: string; userStatic: string; userDynamic: string },
+  model?: string,
+): Promise<ResumeContent> {
   return generateStructured({
     schema: ResumeContentSchema,
-    system,
-    prompt,
+    system: built.system,
+    cachePrefix: built.userStatic,
+    prompt: built.userDynamic,
     model: model ?? CLAUDE_TAILOR_MODEL,
     maxTokens: 4000,
   });

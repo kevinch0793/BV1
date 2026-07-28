@@ -1,5 +1,10 @@
 // Prompt builders for the three LLM tasks: extract a job posting, tailor from a
-// base resume, and generate a resume from scratch. Each returns { system, prompt }.
+// base resume, and generate a resume from scratch. Extraction returns
+// { system, prompt }. The two tailor builders return { system, userStatic,
+// userDynamic }: userStatic (candidate profile + base resume) is IDENTICAL across
+// all of one profile's jobs, so it's placed FIRST and prompt-cached; userDynamic
+// (this job's description + ATS keywords + task) changes per job and follows it.
+// Ordering matters — caching is prefix-based, so the reused part must come first.
 
 /** A project subgroup inside one company: the theme of work there. */
 export type ProjectGroup = { name: string; type: string; domain: string; bullets: string[] };
@@ -183,11 +188,15 @@ export function buildTailorWithBasePrompt(args: {
 }) {
   return {
     system: `You are an expert resume writer. You tailor an existing resume to a specific job description, producing a structured resume. ${TAILORING_RULES}\n\n${resumeGuidelines(args.skills ?? SKILLS_SIZE_DEFAULT)}`,
-    prompt: [
-      `# Job description\n${serializeJob(args.job)}`,
-      atsSkillsBlock(args.atsSkills),
+    // Static across this profile's jobs → cached (see file header).
+    userStatic: [
       `# Candidate profile (supplementary facts)\n${serializeProfile(args.profile)}`,
       `# Candidate's existing base resume (primary source of truth)\n"""\n${args.baseResume.slice(0, 40000)}\n"""`,
+    ].join("\n\n"),
+    // Per-job → follows the cached prefix.
+    userDynamic: [
+      `# Job description\n${serializeJob(args.job)}`,
+      atsSkillsBlock(args.atsSkills),
       args.instructions ? `# Extra user instructions (follow these)\n${args.instructions}` : "",
       `# Task\nRewrite and reorganize the base resume into a tailored resume strongly aligned with the job description. Group each company's bullets under its project subgroups. Use each subgroup's SHORT name/acronym (never invent or rename); you MAY lightly re-word its KIND (keep it a few words) to mirror the JD — the title renders as "name - kind" and must stay short and ATS-clean. From a subgroup's "Can cover" domains pick the ONE that best fits this JD and frame that subgroup's bullets around only it (not several/all). Cover the ATS keywords listed above. Honor the extra user instructions.`,
     ]
@@ -206,10 +215,12 @@ export function buildFromScratchPrompt(args: {
 }) {
   return {
     system: `You are an expert resume writer. You build a tailored resume from a candidate's structured profile when no base resume exists. ${TAILORING_RULES}\n- Each company's project subgroups are anchors: output a SHORT name/acronym (never invent/rename) and a concise KIND of a few words (kind may be lightly re-worded to mirror the JD) — the title renders as "name - kind" and must stay compact and ATS-clean. Expand each subgroup's bullets into JD-aligned, achievement-oriented points without inventing facts, and frame them around the SINGLE "Can cover" domain that best fits this JD — not several/all (one project can't span every industry; never claim a domain it can't cover).\n\n${resumeGuidelines(args.skills ?? SKILLS_SIZE_DEFAULT)}`,
-    prompt: [
+    // Static across this profile's jobs → cached (see file header).
+    userStatic: `# Candidate profile\n${serializeProfile(args.profile)}`,
+    // Per-job → follows the cached prefix.
+    userDynamic: [
       `# Job description\n${serializeJob(args.job)}`,
       atsSkillsBlock(args.atsSkills),
-      `# Candidate profile\n${serializeProfile(args.profile)}`,
       args.instructions ? `# Extra user instructions (follow these)\n${args.instructions}` : "",
       `# Task\nGenerate a complete, tailored resume strongly aligned with the job description, built from the profile. Keep each company's project subgroups and expand their bullets into compelling, JD-relevant points. Cover the ATS keywords listed above (skills section + relevant bullets). Write a summary aimed squarely at this role.`,
     ]
