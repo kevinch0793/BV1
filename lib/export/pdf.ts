@@ -172,7 +172,11 @@ export async function renderPageText(url: string): Promise<string | null> {
         reject(new Error("render timeout"));
       }, RENDER_TIMEOUT_MS),
     );
-    return await Promise.race([renderInPage(page, url), timeout]);
+    const render = renderInPage(page, url);
+    // If the timeout wins, the tab is force-closed and `render` rejects with
+    // nobody awaiting it; swallow that late rejection so it isn't unhandled.
+    void render.catch(() => {});
+    return await Promise.race([render, timeout]);
   } catch {
     return null;
   } finally {

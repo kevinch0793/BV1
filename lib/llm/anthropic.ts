@@ -79,23 +79,25 @@ export async function generateStructured<T>({
           { type: "text", text: prompt ?? "" },
         ]
       : (content ?? prompt ?? "");
-  // .withResponse() returns the IDENTICAL parsed message in `data` plus the raw
-  // HTTP `response`, so we can read the anthropic-ratelimit-* headers (to tune the
-  // tailor concurrency against the real tier) without changing the request at all.
-  const { data: response, response: httpRes } = await getClient()
-    .messages.parse({
+  // IMPORTANT: messages.parse() returns a PLAIN promise at runtime — it is
+  // create().then(parseMessage), NOT an APIPromise — even though the .d.ts types
+  // it as APIPromise. So `.withResponse()` is undefined at runtime and MUST NOT be
+  // chained here (it throws "withResponse is not a function" and fails every call).
+  // Just await the parse; the prompt caching lives on the request params above.
+  let response;
+  try {
+    response = await getClient().messages.parse({
       model,
       max_tokens: maxTokens,
       system: systemParam,
       messages: [{ role: "user", content: userContent }],
       output_config: { format: zodOutputFormat(schema) },
-    })
-    .withResponse()
-    .catch((e) => {
-      const status = (e as { status?: number })?.status;
-      if (status === 429) console.warn(`[llm] anthropic 429 (rate-limited) after ${Date.now() - t0}ms`);
-      throw e;
     });
+  } catch (e) {
+    const status = (e as { status?: number })?.status;
+    if (status === 429) console.warn(`[llm] anthropic 429 (rate-limited) after ${Date.now() - t0}ms`);
+    throw e;
+  }
 
   const ms = Date.now() - t0;
   recordUsage({
@@ -105,17 +107,15 @@ export async function generateStructured<T>({
     outputTokens: response.usage?.output_tokens ?? 0,
     ms,
   });
-  // Concise per-call visibility for tuning TAILOR_CONCURRENCY: rate-limit remaining
-  // (should stay > 0 — if it hits 0 we're at the tier ceiling) + cache hit tokens
-  // (cache_read > 0 on the 2nd+ call of a burst confirms the system cache is live).
-  // Low volume (~1–2/min), so logged every call; gate behind LLM_DEBUG once tuned.
-  const h = httpRes?.headers;
-  const rl = h
-    ? `in-rem=${h.get("anthropic-ratelimit-input-tokens-remaining") ?? "?"} out-rem=${h.get("anthropic-ratelimit-output-tokens-remaining") ?? "?"} req-rem=${h.get("anthropic-ratelimit-requests-remaining") ?? "?"} retry-after=${h.get("retry-after") ?? "-"}`
-    : "unavailable";
-  console.log(
-    `[llm] ${model} ${ms}ms in=${response.usage?.input_tokens ?? "?"} out=${response.usage?.output_tokens ?? "?"} cache_read=${response.usage?.cache_read_input_tokens ?? 0} cache_write=${response.usage?.cache_creation_input_tokens ?? 0} cap=${maxTokens} stop=${response.stop_reason} | rl ${rl}`,
-  );
+  // Cache-hit visibility (cache_read > 0 on the 2nd+ tailor of a burst confirms the
+  // prompt cache is live). The anthropic-ratelimit-* headers would need
+  // .withResponse(), which parse() doesn't support at runtime, so we log the
+  // usage-based cache tokens only.
+  if (process.env.LLM_DEBUG) {
+    console.log(
+      `[llm] ${model} ${ms}ms in=${response.usage?.input_tokens ?? "?"} out=${response.usage?.output_tokens ?? "?"} cache_read=${response.usage?.cache_read_input_tokens ?? 0} cache_write=${response.usage?.cache_creation_input_tokens ?? 0} cap=${maxTokens} stop=${response.stop_reason}`,
+    );
+  }
   if (response.stop_reason === "max_tokens") {
     console.warn(`[llm] ${model} hit max_tokens cap (${maxTokens}) — output truncated`);
   }

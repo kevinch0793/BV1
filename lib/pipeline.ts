@@ -3,7 +3,7 @@ import { findJobDescription } from "@/lib/scrape/fetchHtml";
 import { extractJobFields, tailorResume } from "@/lib/llm/service";
 import { llmProfileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { extractJdSkills, scoreFit, profileToText, type JdSkills } from "@/lib/llm/ats";
-import { getCustomInstructions, type SkillsConfig } from "@/lib/settings";
+import { getCustomInstructions, getSettings, type SkillsConfig } from "@/lib/settings";
 import { pruneOldActivity } from "@/lib/retention";
 import { withUsage, withKind } from "@/lib/llm/usage";
 import { FairLimiter } from "@/lib/fairLimiter";
@@ -46,6 +46,39 @@ export async function startPipeline(profileId: string, opts: PipelineOpts): Prom
 
   running.set(profileId, opts);
   void loop(profileId).finally(() => running.delete(profileId));
+}
+
+/**
+ * On server startup, resume the pipeline for EVERY profile that still has
+ * unfinished work (pending / stuck fetching|tailoring / fetched-but-untailored),
+ * so a restart auto-continues without each dashboard needing to be opened.
+ * startPipeline() resets the stuck statuses before looping. Per-profile errors
+ * are swallowed so one bad profile can't block the rest; runs detached.
+ */
+export async function resumeAllPipelines(): Promise<void> {
+  const rows = await prisma.jobPosting.findMany({
+    where: {
+      OR: [
+        { status: "pending" },
+        { status: "fetching" },
+        { status: "tailoring" },
+        { status: "fetched", tailored: { none: {} } },
+      ],
+    },
+    select: { profileId: true },
+    distinct: ["profileId"],
+  });
+  for (const { profileId } of rows) {
+    try {
+      const profile = await prisma.profile.findUnique({ where: { id: profileId }, select: { clientId: true } });
+      if (!profile) continue;
+      const { defaultTemplate, tailoringModel, skills } = await getSettings(profile.clientId);
+      await startPipeline(profileId, { templateId: defaultTemplate, model: tailoringModel, clientId: profile.clientId, skills });
+    } catch (e) {
+      console.error(`[pipeline] startup resume failed for profile ${profileId}:`, e instanceof Error ? e.message : e);
+    }
+  }
+  console.log(`[pipeline] startup resume: kicked ${rows.length} profile(s) with unfinished work`);
 }
 
 // GLOBAL cap on jobs processed at once — shared across ALL profiles, so submitting

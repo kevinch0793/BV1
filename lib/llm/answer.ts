@@ -34,6 +34,10 @@ Rules:
 
 /** Reject if `p` doesn't settle within `ms`, so an answer never hangs the request. */
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  // If the timeout wins the race, `p` is abandoned but keeps running; attach a
+  // catch so its later rejection (e.g. the SDK's own "Request timed out." after
+  // retries) is handled and never surfaces as an unhandledRejection.
+  void p.catch(() => {});
   return Promise.race([
     p,
     new Promise<T>((_, reject) => {
