@@ -110,12 +110,18 @@ export async function ensurePipelineRunning(profileId: string): Promise<{ runnin
 /** Re-queue a failed job for another fetch+tailor pass. */
 export async function retryJob(jobId: string): Promise<void> {
   const clientId = await assertOwnsJob(jobId);
+  const job = await prisma.jobPosting.findUnique({ where: { id: jobId }, select: { profileId: true, descriptionParsed: true } });
+  if (!job) return;
+  // Retry from "fetched" (re-tailor only) when the job already has a usable fetched
+  // JD, so we don't re-pay the scrape + fetch-extract + jd_skills; fall back to
+  // "pending" (full re-fetch) when there's no real JD to work from.
+  const desc = (job.descriptionParsed as { description?: string } | null)?.description ?? "";
+  const status = desc.length >= 200 ? "fetched" : "pending";
   await prisma.jobPosting.updateMany({
     where: { id: jobId, profile: { clientId } },
-    data: { status: "pending", error: null },
+    data: { status, error: null },
   });
-  const job = await prisma.jobPosting.findUnique({ where: { id: jobId }, select: { profileId: true } });
-  if (job) revalidatePath(`/profiles/${job.profileId}/dashboard`);
+  revalidatePath(`/profiles/${job.profileId}/dashboard`);
 }
 
 /**
@@ -131,13 +137,19 @@ export async function retryJobs(jobIds: string[]): Promise<{ retried: number }> 
   if (!ids.length) return { retried: 0 };
   const jobs = await prisma.jobPosting.findMany({
     where: { id: { in: ids }, profile: { clientId } },
-    select: { id: true, url: true, profileId: true },
+    select: { id: true, url: true, profileId: true, descriptionParsed: true },
   });
   for (const j of jobs) {
     const fixed = j.url ? normalizeUrl(j.url) : null; // repair a mangled URL if we can
+    const repaired = !!(fixed && fixed !== j.url);
+    // Re-tailor only (from "fetched") when the JD is already fetched and the URL
+    // wasn't repaired; otherwise re-fetch from "pending" (a repaired URL must be
+    // re-scraped). Saves the scrape + OpenAI extracts when only the tailor failed.
+    const desc = (j.descriptionParsed as { description?: string } | null)?.description ?? "";
+    const status = !repaired && desc.length >= 200 ? "fetched" : "pending";
     await prisma.jobPosting.update({
       where: { id: j.id },
-      data: { status: "pending", error: null, ...(fixed && fixed !== j.url ? { url: fixed } : {}) },
+      data: { status, error: null, ...(repaired ? { url: fixed! } : {}) },
     });
   }
   for (const pid of new Set(jobs.map((j) => j.profileId))) revalidatePath(`/profiles/${pid}/dashboard`);

@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { Agent } from "undici";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { recordUsage } from "@/lib/llm/usage";
@@ -12,9 +13,18 @@ function getClient(): Anthropic {
     if (!process.env.ANTHROPIC_API_KEY) {
       throw new Error("ANTHROPIC_API_KEY is not set — add it to .env.");
     }
-    // maxRetries 4 so transient 429 throttling self-heals (honoring retry-after)
-    // instead of failing a job mid-batch.
-    _client = new Anthropic({ maxRetries: 4 });
+    // Give the Anthropic client its OWN undici connection pool. Under the Next.js
+    // server runtime, Node's global fetch dispatcher funnels all requests onto a
+    // single keep-alive connection, so concurrent (non-streaming) tailor calls
+    // SERIALIZE — each waits in a queue INSIDE fetch() for the one connection,
+    // turning a ~15s call into minutes once the queue is deep. A dedicated pool
+    // lets concurrent tailors run in parallel. Proven: 1 connection → 8 calls take
+    // 13→120s (serialized); a 20-connection pool → ~13s each (parallel).
+    // maxRetries 4 keeps transient 429s self-healing.
+    _client = new Anthropic({
+      maxRetries: 4,
+      fetchOptions: { dispatcher: new Agent({ connections: 32 }) },
+    });
   }
   return _client;
 }
@@ -66,8 +76,12 @@ export async function generateStructured<T>({
   // the model receives the identical prompt, so the output is byte-for-byte the
   // same. Anthropic ignores cache_control on sub-threshold blocks, so a small
   // system prompt from any other caller is unaffected.
+  // ttl "1h" (vs the 5m default): the fair scheduler interleaves ~10 profiles, so
+  // a profile's jobs are spaced well past 5m and would keep re-paying cache WRITES.
+  // A 1h TTL (2x write, paid once) keeps each profile's prefix warm across all its
+  // ~150 jobs — every read (0.1x) re-arms the hour for free. Quality-neutral.
   const systemParam: Array<Anthropic.TextBlockParam> | undefined = system
-    ? [{ type: "text", text: system, cache_control: { type: "ephemeral" } }]
+    ? [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }]
     : undefined;
   // When a cachePrefix is given, split the user message into [cached static
   // block, dynamic block] so repeat calls with the same prefix bill it as a cache
@@ -75,7 +89,7 @@ export async function generateStructured<T>({
   const userContent: Anthropic.MessageParam["content"] =
     cachePrefix != null
       ? [
-          { type: "text", text: cachePrefix, cache_control: { type: "ephemeral" } },
+          { type: "text", text: cachePrefix, cache_control: { type: "ephemeral", ttl: "1h" } },
           { type: "text", text: prompt ?? "" },
         ]
       : (content ?? prompt ?? "");

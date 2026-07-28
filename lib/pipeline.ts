@@ -300,7 +300,17 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
           fitDetail: fit.fitDetail as object,
         },
       });
-      await tx.jobPosting.update({ where: { id: jobId }, data: { status: "fetched", error: null } });
+      await tx.jobPosting.update({
+        where: { id: jobId },
+        // Persist freshly-extracted ATS skills back onto the job so a re-tailor or
+        // retry reuses them (the `stored ??` branch above) instead of re-running
+        // jd_skills every time. Only when we just extracted them (stored was null).
+        data: {
+          status: "fetched",
+          error: null,
+          ...(stored == null && skills ? { descriptionParsed: { ...parsed, atsSkills: skills } as object } : {}),
+        },
+      });
     });
     return true;
   } catch (e) {
