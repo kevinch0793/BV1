@@ -121,6 +121,7 @@ model Profile {
   templateId   String? // per-profile resume template id; null = default ("modern")
   resumeFont   String? // per-profile font family id; null = default
   resumeAccent String? // per-profile accent color id; null = default
+  paused    Boolean  @default(false) // admin pause: stops this profile's fetch+tailor pipeline and blocks add/refetch
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

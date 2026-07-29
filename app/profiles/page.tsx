@@ -4,6 +4,9 @@ import { profileWhere, ownedByProfileWhere } from "@/lib/owner";
 import { appDayRange, currentAppDayKey } from "@/lib/appday";
 import { createProfile } from "@/app/actions/profiles";
 import { ProfileTemplateBadge } from "@/components/ProfileTemplateBadge";
+import { ProfilePauseButton } from "@/components/ProfilePauseButton";
+import { PauseAllButton } from "@/components/PauseAllButton";
+import { requireClient } from "@/lib/auth";
 import { templatesFor } from "@/components/templates";
 
 export const dynamic = "force-dynamic";
@@ -47,9 +50,16 @@ export default async function ProfilesPage() {
     todayByProfile.set(j.profileId, e);
   }
 
+  const { role } = await requireClient();
+  const isAdmin = role === "admin";
+  const allPaused = profiles.length > 0 && profiles.every((p) => p.paused);
+
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-semibold text-neutral-900">Profiles</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-neutral-900">Profiles</h1>
+        {isAdmin && profiles.length > 0 && <PauseAllButton allPaused={allPaused} />}
+      </div>
 
       <form
         action={createProfile}
@@ -69,6 +79,7 @@ export default async function ProfilesPage() {
           {profiles.map((p) => (
             <li key={p.id} className="relative rounded-xl border border-neutral-200 bg-white transition hover:border-sky-300 hover:shadow-sm">
               <ProfileTemplateBadge profileId={p.id} current={p.templateId} templates={templatesFor(p.client.email)} />
+              <ProfilePauseButton profileId={p.id} paused={p.paused} isAdmin={isAdmin} />
               <Link href={`/profiles/${p.id}`} className="block p-4">
                 <div className="text-sm font-medium text-sky-700">{p.label}</div>
                 <div className="text-lg font-semibold text-neutral-900">{p.fullName}</div>

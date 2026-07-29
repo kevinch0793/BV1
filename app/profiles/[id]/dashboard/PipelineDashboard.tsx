@@ -80,12 +80,14 @@ export function PipelineDashboard({
   canTailor,
   isToday,
   dayLabel,
+  paused,
 }: {
   profileId: string;
   jobs: Job[];
   canTailor: boolean;
   isToday: boolean;
   dayLabel: string;
+  paused: boolean;
 }) {
   const router = useRouter();
   const [polling, setPolling] = useState(false);
@@ -240,9 +242,16 @@ export function PipelineDashboard({
 
   return (
     <div className="space-y-6">
+      {paused && (
+        <div className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="font-semibold">Paused by an admin.</span>
+          Fetching, tailoring, adding jobs, and retrying are disabled until this profile is resumed.
+        </div>
+      )}
+
       {/* Add URLs (auto-runs the pipeline) — only on today's view, since new jobs
-          are stamped with today's date. */}
-      {isToday && (
+          are stamped with today's date. Hidden while paused. */}
+      {isToday && !paused && (
       <section className="rounded-xl border border-neutral-200 bg-white p-5">
         <h2 className="text-lg font-semibold text-neutral-900">Add job URLs</h2>
         <p className="mb-3 text-xs text-neutral-500">
@@ -302,7 +311,8 @@ export function PipelineDashboard({
               <span className="text-xs text-neutral-500">{selected.size} selected</span>
               <button
                 onClick={retrySelected}
-                disabled={retrying || removing}
+                disabled={retrying || removing || paused}
+                title={paused ? "Profile is paused" : undefined}
                 className="rounded-md bg-sky-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-800 disabled:opacity-50"
               >
                 {retrying ? "Retrying…" : "Retry fetch"}
@@ -370,6 +380,7 @@ export function PipelineDashboard({
                       onRetry={(id) => retryJob(id).then(kick)}
                       onPasted={kick}
                       onRefresh={() => router.refresh()}
+                      paused={paused}
                     />
                   );
                 })}
@@ -390,6 +401,7 @@ function JobRow({
   onRetry,
   onPasted,
   onRefresh,
+  paused,
 }: {
   job: Job;
   selected: boolean;
@@ -398,6 +410,7 @@ function JobRow({
   onRetry: (id: string) => void;
   onPasted: () => void;
   onRefresh: () => void;
+  paused: boolean;
 }) {
   const [showPaste, setShowPaste] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -548,10 +561,10 @@ function JobRow({
             {job.tailoredId && (
               <button onClick={() => setShowPreview(true)} className="font-medium text-sky-700 hover:underline">Resume</button>
             )}
-            {stage === "failed" && job.url && (
+            {stage === "failed" && job.url && !paused && (
               <button onClick={() => onRetry(job.id)} className="text-sky-700 hover:underline">Retry</button>
             )}
-            {canPaste && (
+            {canPaste && !paused && (
               <button onClick={() => setShowPaste((v) => !v)} className="text-neutral-600 hover:underline">
                 {showPaste ? "Cancel" : "Paste JD"}
               </button>

@@ -87,7 +87,7 @@ export default async function ProfileDashboard({
         </p>
       )}
 
-      <PipelineDashboard profileId={profile.id} jobs={jobs} canTailor={canTailor} isToday={isToday} dayLabel={label} />
+      <PipelineDashboard profileId={profile.id} jobs={jobs} canTailor={canTailor} isToday={isToday} dayLabel={label} paused={profile.paused} />
     </div>
   );
 }

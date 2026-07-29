@@ -4,6 +4,9 @@ import { profileWhere, ownedByProfileWhere } from "@/lib/owner";
 import { appDayKey, appDayRange, currentAppDayKey, recentAppDayKeys } from "@/lib/appday";
 import { AppliedChart } from "@/components/AppliedChart";
 import { ProfileTemplateBadge } from "@/components/ProfileTemplateBadge";
+import { ProfilePauseButton } from "@/components/ProfilePauseButton";
+import { PauseAllButton } from "@/components/PauseAllButton";
+import { requireClient } from "@/lib/auth";
 import { templatesFor } from "@/components/templates";
 
 export const dynamic = "force-dynamic";
@@ -50,17 +53,24 @@ export default async function Dashboard() {
   const events = appliedJobs.map((j) => ({ profileId: j.profileId, day: appDayKey(j.appliedAt!) }));
   const chartProfiles = profiles.map((p) => ({ id: p.id, name: p.fullName || p.label }));
 
+  const { role } = await requireClient();
+  const isAdmin = role === "admin";
+  const allPaused = profiles.length > 0 && profiles.every((p) => p.paused);
+
   return (
     <div className="space-y-10">
       <section>
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-2xl font-semibold text-neutral-900">Profiles</h1>
-          <Link
-            href="/profiles"
-            className="rounded-md bg-sky-700 px-3 py-2 text-sm font-medium text-white hover:bg-sky-800"
-          >
-            Manage profiles
-          </Link>
+          <div className="flex items-center gap-2">
+            {isAdmin && profiles.length > 0 && <PauseAllButton allPaused={allPaused} />}
+            <Link
+              href="/profiles"
+              className="rounded-md bg-sky-700 px-3 py-2 text-sm font-medium text-white hover:bg-sky-800"
+            >
+              Manage profiles
+            </Link>
+          </div>
         </div>
         {profiles.length === 0 ? (
           <EmptyCard
@@ -74,6 +84,7 @@ export default async function Dashboard() {
             {profiles.map((p) => (
               <div key={p.id} className="relative rounded-xl border border-neutral-200 bg-white transition hover:border-sky-300 hover:shadow-sm">
                 <ProfileTemplateBadge profileId={p.id} current={p.templateId} templates={templatesFor(p.client.email)} />
+                <ProfilePauseButton profileId={p.id} paused={p.paused} isAdmin={isAdmin} />
                 <Link href={`/profiles/${p.id}`} className="block p-4">
                   <div className="text-sm font-medium text-sky-700">{p.label}</div>
                   <div className="text-lg font-semibold text-neutral-900">{p.fullName}</div>

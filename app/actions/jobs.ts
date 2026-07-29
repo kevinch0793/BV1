@@ -5,7 +5,10 @@ import { prisma } from "@/lib/db";
 import { findJobDescription } from "@/lib/scrape/fetchHtml";
 import { extractJobFields } from "@/lib/llm/service";
 import { assertOwnsProfile, assertOwnsJob } from "@/lib/owner";
+import { isProfilePaused } from "@/lib/pipeline";
 import { normalizeUrl, normalizeUrls } from "@/lib/url";
+
+const PAUSED_MSG = "This profile is paused by an admin — resume it to add or fetch jobs.";
 
 export type JobActionResult = { ok: boolean; error?: string; needsPaste?: boolean };
 
@@ -32,6 +35,7 @@ export async function addJobUrls(
   formData: FormData,
 ): Promise<{ ok: boolean; added: number; skipped: number; error?: string }> {
   await assertOwnsProfile(profileId);
+  if (await isProfilePaused(profileId)) return { ok: false, added: 0, skipped: 0, error: PAUSED_MSG };
   const urls = normalizeUrls(String(formData.get("urls") ?? ""));
   if (urls.length === 0) return { ok: false, added: 0, skipped: 0, error: "Enter at least one URL." };
 
@@ -121,6 +125,7 @@ export async function addJobFromText(
   formData: FormData,
 ): Promise<JobActionResult> {
   await assertOwnsProfile(profileId);
+  if (await isProfilePaused(profileId)) return { ok: false, error: PAUSED_MSG };
   const text = String(formData.get("text") ?? "").trim();
   const url = String(formData.get("url") ?? "").trim() || null;
   if (text.length < 50) return { ok: false, error: "Paste the full job description." };
@@ -156,6 +161,7 @@ export async function setJobFromText(
   if (text.length < 50) return { ok: false, error: "Paste the full job description." };
   const job = await prisma.jobPosting.findUnique({ where: { id: jobId } });
   if (!job) return { ok: false, error: "Job not found." };
+  if (await isProfilePaused(job.profileId)) return { ok: false, error: PAUSED_MSG };
 
   try {
     const fields = await extractJobFields(text);

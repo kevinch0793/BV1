@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getSettings, getGlobalModel } from "@/lib/settings";
-import { requireClient } from "@/lib/auth";
+import { requireClient, requireAdmin } from "@/lib/auth";
 import { assertOwnsProfile, assertOwnsJob } from "@/lib/owner";
-import { startPipeline as start, isPipelineRunning } from "@/lib/pipeline";
+import { startPipeline as start, isPipelineRunning, isProfilePaused, startProfilePipeline, resumeAllPipelines } from "@/lib/pipeline";
 import { normalizeUrl } from "@/lib/url";
 
 /**
@@ -25,6 +25,31 @@ export async function startPipeline(profileId: string): Promise<{ ok: true }> {
 export async function pipelineRunning(profileId: string): Promise<boolean> {
   await requireClient();
   return isPipelineRunning(profileId);
+}
+
+/**
+ * Admin: pause or resume ONE profile's pipeline. Pausing stops all fetch+tailor
+ * work (the engine checks the flag) and blocks add-URL / paste-JD / retry (those
+ * actions check it too). Resuming re-kicks the incomplete work.
+ */
+export async function setProfilePaused(profileId: string, paused: boolean): Promise<{ ok: true }> {
+  await requireAdmin();
+  await prisma.profile.update({ where: { id: profileId }, data: { paused } });
+  if (!paused) await startProfilePipeline(profileId);
+  revalidatePath("/");
+  revalidatePath("/profiles");
+  revalidatePath(`/profiles/${profileId}/dashboard`);
+  return { ok: true };
+}
+
+/** Admin: pause or resume ALL profiles at once (bulk-sets each profile's flag). */
+export async function setAllPaused(paused: boolean): Promise<{ ok: true }> {
+  await requireAdmin();
+  await prisma.profile.updateMany({ data: { paused } });
+  if (!paused) await resumeAllPipelines();
+  revalidatePath("/");
+  revalidatePath("/profiles");
+  return { ok: true };
 }
 
 export type LiveJob = {
@@ -86,8 +111,9 @@ export async function jobStatuses(profileId: string, jobIds: string[]): Promise<
  * fetched but not yet tailored — (re)start it. start() resets the stuck statuses
  * before looping, so a frozen run resumes just by loading the dashboard.
  */
-export async function ensurePipelineRunning(profileId: string): Promise<{ running: boolean }> {
+export async function ensurePipelineRunning(profileId: string): Promise<{ running: boolean; paused?: boolean }> {
   const clientId = await assertOwnsProfile(profileId);
+  if (await isProfilePaused(profileId)) return { running: false, paused: true };
   if (isPipelineRunning(profileId)) return { running: true };
 
   const work = await prisma.jobPosting.count({
@@ -114,6 +140,7 @@ export async function retryJob(jobId: string): Promise<void> {
   const clientId = await assertOwnsJob(jobId);
   const job = await prisma.jobPosting.findUnique({ where: { id: jobId }, select: { profileId: true, descriptionParsed: true } });
   if (!job) return;
+  if (await isProfilePaused(job.profileId)) throw new Error("This profile is paused — resume it to retry jobs.");
   // Retry from "fetched" (re-tailor only) when the job already has a usable fetched
   // JD, so we don't re-pay the scrape + fetch-extract + jd_skills; fall back to
   // "pending" (full re-fetch) when there's no real JD to work from.
@@ -137,8 +164,9 @@ export async function retryJobs(jobIds: string[]): Promise<{ retried: number }> 
   const { id: clientId } = await requireClient();
   const ids = [...new Set(jobIds ?? [])].slice(0, 500);
   if (!ids.length) return { retried: 0 };
+  // Skip jobs on paused profiles (their follow-up pipeline kick is blocked anyway).
   const jobs = await prisma.jobPosting.findMany({
-    where: { id: { in: ids }, profile: { clientId } },
+    where: { id: { in: ids }, profile: { clientId, paused: false } },
     select: { id: true, url: true, profileId: true, descriptionParsed: true },
   });
   for (const j of jobs) {

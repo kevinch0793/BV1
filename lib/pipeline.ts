@@ -29,6 +29,11 @@ export function isPipelineRunning(profileId: string): boolean {
  * Returns immediately; the work continues detached in the server process.
  */
 export async function startPipeline(profileId: string, opts: PipelineOpts): Promise<void> {
+  // Admin pause: never start/restart/resume a paused profile. This single guard
+  // covers every entry point (dashboard kick, ensurePipelineRunning, resumeAll,
+  // boot) and stops the stuck-status resets below from firing while paused.
+  if (await isProfilePaused(profileId)) return;
+
   // Already running: just refresh options. The running loop re-gathers between
   // rounds, so any newly-pending (e.g. retried) job gets picked up on its own.
   // Crucially, do NOT touch in-flight ("fetching"/"tailoring") jobs here, or a
@@ -58,15 +63,44 @@ export async function startPipeline(profileId: string, opts: PipelineOpts): Prom
 }
 
 /**
+ * Is this profile paused by an admin? Wrapped in try/catch so it stays safe even
+ * before the `paused` column migration is applied (missing column → not paused).
+ * A single cheap indexed read; used at every pipeline start/round/job checkpoint.
+ */
+export async function isProfilePaused(profileId: string): Promise<boolean> {
+  try {
+    const p = await prisma.profile.findUnique({ where: { id: profileId }, select: { paused: true } });
+    return p?.paused ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Load a profile's pipeline options (Settings + global model) and start its loop.
+ * Shared by the boot resume and the admin resume action. The engine startPipeline
+ * still no-ops if the profile is paused.
+ */
+export async function startProfilePipeline(profileId: string): Promise<void> {
+  const profile = await prisma.profile.findUnique({ where: { id: profileId }, select: { clientId: true } });
+  if (!profile) return;
+  const { defaultTemplate, skills } = await getSettings(profile.clientId);
+  const model = await getGlobalModel();
+  await startPipeline(profileId, { templateId: defaultTemplate, model, clientId: profile.clientId, skills });
+}
+
+/**
  * On server startup, resume the pipeline for EVERY profile that still has
  * unfinished work (pending / stuck fetching|tailoring / fetched-but-untailored),
  * so a restart auto-continues without each dashboard needing to be opened.
  * startPipeline() resets the stuck statuses before looping. Per-profile errors
- * are swallowed so one bad profile can't block the rest; runs detached.
+ * are swallowed so one bad profile can't block the rest; runs detached. Paused
+ * profiles are skipped (both by this query and the startPipeline guard).
  */
 export async function resumeAllPipelines(): Promise<void> {
   const rows = await prisma.jobPosting.findMany({
     where: {
+      profile: { paused: false },
       OR: [
         { status: "pending" },
         { status: "fetching" },
@@ -79,11 +113,7 @@ export async function resumeAllPipelines(): Promise<void> {
   });
   for (const { profileId } of rows) {
     try {
-      const profile = await prisma.profile.findUnique({ where: { id: profileId }, select: { clientId: true } });
-      if (!profile) continue;
-      const { defaultTemplate, skills } = await getSettings(profile.clientId);
-      const model = await getGlobalModel();
-      await startPipeline(profileId, { templateId: defaultTemplate, model, clientId: profile.clientId, skills });
+      await startProfilePipeline(profileId);
     } catch (e) {
       console.error(`[pipeline] startup resume failed for profile ${profileId}:`, e instanceof Error ? e.message : e);
     }
@@ -142,6 +172,10 @@ async function loop(profileId: string): Promise<void> {
   // round runs its jobs concurrently. Failures move jobs to "failed", so they
   // drop out of the next gather and the loop converges.
   for (let round = 0; round < 50; round++) {
+    // Admin pause: stop gathering new work. In-flight jobs from the current round
+    // finish their (transactional) fetch/tailor; the per-job check in processJob
+    // makes queued-but-not-started jobs bail quickly.
+    if (await isProfilePaused(profileId)) break;
     if (useBatch) {
       // Batch mode: fetch pending JDs in real time (OpenAI, cheap), THEN tailor the
       // fetched-untailored jobs together through the Anthropic Batch API — 50% off,
@@ -183,6 +217,9 @@ async function loop(profileId: string): Promise<void> {
 
 /** One job's full chain: fetch (if needed) then tailor (if possible). */
 async function processJob(profileId: string, jobId: string, canTailor: boolean): Promise<void> {
+  // Admin pause: a job queued into globalLimiter before the pause bails here
+  // without spending a fetch/tailor (leaving its status untouched for resume).
+  if (await isProfilePaused(profileId)) return;
   const opts = running.get(profileId) ?? {};
   // Attribute every LLM call in this job's chain to the client/profile/job for the
   // admin usage analytics. Sub-calls re-tag the kind (fetch / jd_skills / tailor).
