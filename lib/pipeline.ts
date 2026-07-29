@@ -1,11 +1,13 @@
 import { prisma } from "@/lib/db";
 import { findJobDescription } from "@/lib/scrape/fetchHtml";
-import { extractJobFields, tailorResume } from "@/lib/llm/service";
+import { extractJobFields, tailorResume, type TailorArgs } from "@/lib/llm/service";
+import { createTailorBatch, waitForBatch, collectTailorResults, listOpenBatchIds, type TailorBatchRequest, type BatchUsage } from "@/lib/llm/batch";
+import { type ResumeContent } from "@/lib/llm/schema";
 import { llmProfileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { extractJdSkills, scoreFit, profileToText, type JdSkills } from "@/lib/llm/ats";
 import { getCustomInstructions, getSettings, type SkillsConfig } from "@/lib/settings";
 import { pruneOldActivity } from "@/lib/retention";
-import { withUsage, withKind } from "@/lib/llm/usage";
+import { withUsage, withKind, recordUsage } from "@/lib/llm/usage";
 import { FairLimiter } from "@/lib/fairLimiter";
 import type { JobForLLM } from "@/lib/llm/prompts";
 
@@ -42,7 +44,14 @@ export async function startPipeline(profileId: string, opts: PipelineOpts): Prom
 
   // Fresh start: recover any states left mid-flight by a previous interrupted run.
   await prisma.jobPosting.updateMany({ where: { profileId, status: "fetching" }, data: { status: "pending" } });
-  await prisma.jobPosting.updateMany({ where: { profileId, status: "tailoring" }, data: { status: "fetched" } });
+  // In batch mode, "tailoring" jobs may be in-flight in a submitted batch that
+  // outlives a restart — resumeOpenBatches() re-attaches and finishes them, so
+  // resetting them here would re-tailor them in a NEW batch (double spend). Leave
+  // them; a genuinely stuck "tailoring" job (crashed before submit) is clearable
+  // from the dashboard via retry. In sync mode, reset as before.
+  if (!BATCH_TAILOR) {
+    await prisma.jobPosting.updateMany({ where: { profileId, status: "tailoring" }, data: { status: "fetched" } });
+  }
 
   running.set(profileId, opts);
   void loop(profileId).finally(() => running.delete(profileId));
@@ -112,6 +121,13 @@ const globalLimiter = new FairLimiter(GLOBAL_CONCURRENCY);
 const TAILOR_CONCURRENCY = Math.max(1, Number(process.env.TAILOR_CONCURRENCY) || 3);
 const tailorLimiter = new FairLimiter(TAILOR_CONCURRENCY);
 
+// Route BULK pipeline tailoring through the Anthropic Message Batches API (50% off
+// all tokens, byte-identical output) instead of the synchronous per-job path. Off
+// by default — the synchronous path is proven; flip TAILOR_BATCH=1 to enable batch
+// tailoring once it's live-validated. The interactive "Tailor now" path always
+// stays synchronous regardless of this flag.
+const BATCH_TAILOR = process.env.TAILOR_BATCH === "1";
+
 async function loop(profileId: string): Promise<void> {
   const profile = await prisma.profile.findUnique({
     where: { id: profileId },
@@ -119,25 +135,48 @@ async function loop(profileId: string): Promise<void> {
   });
   const canTailor = !!profile && (!!profile.baseResume || profile._count.experiences > 0);
 
+  const useBatch = BATCH_TAILOR && canTailor;
+  const opts = running.get(profileId) ?? {};
   // Re-gather between rounds so URLs/pastes added mid-run get picked up. Each
   // round runs its jobs concurrently. Failures move jobs to "failed", so they
   // drop out of the next gather and the loop converges.
   for (let round = 0; round < 50; round++) {
-    const where = canTailor
-      ? { profileId, OR: [{ status: "pending" }, { status: "fetched", tailored: { none: {} } }] }
-      : { profileId, status: "pending" };
-    const jobs = await prisma.jobPosting.findMany({ where, select: { id: true }, orderBy: { createdAt: "asc" } });
-    if (jobs.length === 0) break;
-    // Every job goes through the shared global slot, so all profiles' loops
-    // together never exceed GLOBAL_CONCURRENCY. A per-job error (e.g. the row was
-    // deleted mid-flight → P2025) is swallowed so it never crashes the loop.
-    await Promise.all(
-      jobs.map((j) =>
-        globalLimiter.withSlot(profileId, () => processJob(profileId, j.id, canTailor)).catch((e) => {
-          console.error(`[pipeline] job ${j.id} failed:`, e instanceof Error ? e.message : e);
-        }),
-      ),
-    );
+    if (useBatch) {
+      // Batch mode: fetch pending JDs in real time (OpenAI, cheap), THEN tailor the
+      // fetched-untailored jobs together through the Anthropic Batch API — 50% off,
+      // byte-identical output. Fetch and tailor are separate phases because a batch
+      // can only be submitted once all its JDs are in hand.
+      const pending = await prisma.jobPosting.findMany({ where: { profileId, status: "pending" }, select: { id: true }, orderBy: { createdAt: "asc" } });
+      if (pending.length) {
+        await Promise.all(
+          pending.map((j) =>
+            globalLimiter
+              .withSlot(profileId, () => withUsage({ clientId: opts.clientId ?? null, profileId, jobId: j.id, kind: "fetch" }, () => fetchJobNow(j.id)))
+              .catch((e) => console.error(`[pipeline] fetch ${j.id} failed:`, e instanceof Error ? e.message : e)),
+          ),
+        );
+      }
+      const toTailor = await prisma.jobPosting.findMany({ where: { profileId, status: "fetched", tailored: { none: {} } }, select: { id: true }, orderBy: { createdAt: "asc" } });
+      if (pending.length === 0 && toTailor.length === 0) break;
+      if (toTailor.length) await batchTailorJobs(profileId, toTailor.map((j) => j.id));
+    } else {
+      // Synchronous mode (default, proven): fetch + tailor each job in one pass.
+      const where = canTailor
+        ? { profileId, OR: [{ status: "pending" }, { status: "fetched", tailored: { none: {} } }] }
+        : { profileId, status: "pending" };
+      const jobs = await prisma.jobPosting.findMany({ where, select: { id: true }, orderBy: { createdAt: "asc" } });
+      if (jobs.length === 0) break;
+      // Every job goes through the shared global slot, so all profiles' loops
+      // together never exceed GLOBAL_CONCURRENCY. A per-job error (e.g. the row was
+      // deleted mid-flight → P2025) is swallowed so it never crashes the loop.
+      await Promise.all(
+        jobs.map((j) =>
+          globalLimiter.withSlot(profileId, () => processJob(profileId, j.id, canTailor)).catch((e) => {
+            console.error(`[pipeline] job ${j.id} failed:`, e instanceof Error ? e.message : e);
+          }),
+        ),
+      );
+    }
   }
 }
 
@@ -319,5 +358,192 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
       data: { status: "failed", error: `Tailor failed: ${(e as Error).message}` },
     });
     return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Batch tailoring (Anthropic Message Batches API) — opt-in via TAILOR_BATCH=1.
+// Same request as the synchronous path (buildTailorParams → byte-identical
+// output), submitted in bulk for 50% off all tokens. Three stages: prepare (build
+// the request, mark "tailoring", persist skills) → submit + poll → apply (persist
+// the result). applyTailorResult re-derives everything from the DB, so it also
+// finishes batches recovered after a restart.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Build one job's batch tailor request: mark it "tailoring", (re)extract + PERSIST
+ *  its ATS skills (so apply-time scoreFit uses exactly the skills the tailor saw),
+ *  and return the TailorArgs. Returns null if the job can't be tailored. */
+async function prepareTailor(jobId: string, opts: PipelineOpts): Promise<TailorArgs | null> {
+  const job = await prisma.jobPosting.findUnique({ where: { id: jobId } });
+  if (!job) return null;
+  const profile = await prisma.profile.findUnique({ where: { id: job.profileId }, include: llmProfileInclude });
+  if (!profile) return null;
+  const mode: "with_base" | "from_scratch" = profile.baseResume ? "with_base" : "from_scratch";
+  if (mode === "from_scratch" && profile.experiences.length === 0) return null;
+
+  const parsed = (job.descriptionParsed as { description?: string; requirements?: string[]; atsSkills?: JdSkills | null }) ?? {};
+  const jobFields: JobForLLM = {
+    company: job.company,
+    role: job.role,
+    location: job.location,
+    description: parsed.description ?? job.descriptionRaw ?? "",
+    requirements: parsed.requirements ?? [],
+  };
+  const stored = parsed.atsSkills && Array.isArray(parsed.atsSkills.hardSkills) ? parsed.atsSkills : null;
+  const skills = stored ?? (await withKind("jd_skills", () => extractJdSkills(jobFields)).catch(() => null));
+  const customInstructions = opts.clientId ? await getCustomInstructions(opts.clientId) : "";
+  // Mark in-flight AND persist freshly-extracted skills now: the batch result is
+  // applied later (possibly after a restart), and applyTailorResult re-reads
+  // atsSkills from the job to score against exactly what the tailor was given.
+  await prisma.jobPosting.update({
+    where: { id: jobId },
+    data: {
+      status: "tailoring",
+      ...(stored == null && skills ? { descriptionParsed: { ...parsed, atsSkills: skills } as object } : {}),
+    },
+  });
+  return {
+    mode,
+    profile: toProfileForLLM(profile),
+    job: jobFields,
+    baseResume: profile.baseResume?.rawText,
+    instructions: opts.instructions,
+    customInstructions,
+    model: opts.model,
+    atsSkills: skills,
+    skills: opts.skills,
+  };
+}
+
+/** Persist a completed batched tailor. Self-contained (re-derives profile, skills,
+ *  and template from the DB) so it also applies batches recovered after a restart. */
+async function applyTailorResult(jobId: string, content: ResumeContent, usage?: BatchUsage): Promise<void> {
+  const job = await prisma.jobPosting.findUnique({ where: { id: jobId } });
+  if (!job) return;
+  const profile = await prisma.profile.findUnique({ where: { id: job.profileId }, include: llmProfileInclude });
+  if (!profile) return;
+  const parsed = (job.descriptionParsed as { description?: string; requirements?: string[]; atsSkills?: JdSkills | null }) ?? {};
+  const skills = parsed.atsSkills && Array.isArray(parsed.atsSkills.hardSkills) ? parsed.atsSkills : null;
+  const jobFields: JobForLLM = {
+    company: job.company,
+    role: job.role,
+    location: job.location,
+    description: parsed.description ?? job.descriptionRaw ?? "",
+    requirements: parsed.requirements ?? [],
+  };
+  const profileForLLM = toProfileForLLM(profile);
+  const beforeText = profile.baseResume?.rawText || profileToText(profileForLLM);
+  const fit = scoreFit(skills, jobFields.role ?? "", beforeText, content);
+  const mode: "with_base" | "from_scratch" = profile.baseResume ? "with_base" : "from_scratch";
+  const { defaultTemplate } = await getSettings(profile.clientId);
+  // Attribute the batched tailor's tokens (billed at half rate) for cost analytics.
+  if (usage) {
+    void withUsage({ clientId: profile.clientId, profileId: job.profileId, jobId, kind: "batch_tailor" }, async () =>
+      recordUsage({ provider: "anthropic", model: usage.model, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, ms: 0, kind: "batch_tailor" }),
+    );
+  }
+  // Bulk pipeline carries no per-job instructions; template comes from Settings
+  // (identical to the sync path's opts.templateId, which is that same setting).
+  await prisma.$transaction(async (tx) => {
+    await tx.tailoredResume.deleteMany({ where: { jobPostingId: jobId } });
+    await tx.tailoredResume.create({
+      data: {
+        profileId: job.profileId,
+        jobPostingId: jobId,
+        templateId: defaultTemplate ?? "modern",
+        mode,
+        instructions: null,
+        content,
+        fitBefore: fit.fitBefore,
+        fitAfter: fit.fitAfter,
+        fitDetail: fit.fitDetail as object,
+      },
+    });
+    await tx.jobPosting.update({ where: { id: jobId }, data: { status: "fetched", error: null } });
+  });
+}
+
+async function markTailorFailed(jobId: string, error: string): Promise<void> {
+  await prisma.jobPosting
+    .update({ where: { id: jobId }, data: { status: "failed", error: `Tailor failed: ${error}` } })
+    .catch(() => {});
+}
+
+/** Prepare a set of fetched jobs, submit them as Message Batch(es), poll to
+ *  completion, and persist each result. Returns the number successfully tailored. */
+async function batchTailorJobs(profileId: string, jobIds: string[]): Promise<number> {
+  const opts = running.get(profileId) ?? {};
+  // Prepare concurrently (each runs an OpenAI jd_skills extract), gated by the
+  // shared global slot; wrap in a usage context so those extracts are attributed.
+  const prepared = await Promise.all(
+    jobIds.map((jobId) =>
+      globalLimiter.withSlot(profileId, async () => {
+        const args = await withUsage({ clientId: opts.clientId ?? null, profileId, jobId, kind: "tailor" }, () => prepareTailor(jobId, opts)).catch((e) => {
+          console.error(`[pipeline] prepare ${jobId} failed:`, e instanceof Error ? e.message : e);
+          return null;
+        });
+        return args ? ({ jobId, args } as TailorBatchRequest) : null;
+      }),
+    ),
+  );
+  const requests = prepared.filter((r): r is TailorBatchRequest => r != null);
+  if (!requests.length) return 0;
+
+  let tailored = 0;
+  // Chunk defensively (Anthropic caps 100k requests / 256MB per batch; our
+  // per-profile batches are ~150, far below — but keep chunks bounded).
+  const CHUNK = 1000;
+  for (let i = 0; i < requests.length; i += CHUNK) {
+    const chunk = requests.slice(i, i + CHUNK);
+    let batchId: string;
+    try {
+      batchId = await createTailorBatch(chunk);
+    } catch (e) {
+      console.error(`[pipeline] batch submit failed:`, e instanceof Error ? e.message : e);
+      for (const r of chunk) await markTailorFailed(r.jobId, "batch submit failed");
+      continue;
+    }
+    console.log(`[pipeline] batch ${batchId}: submitted ${chunk.length} tailors`);
+    const ended = await waitForBatch(batchId);
+    if (!ended) {
+      console.error(`[pipeline] batch ${batchId} did not finish within the poll window; leaving jobs "tailoring" for restart recovery`);
+      continue;
+    }
+    for (const res of await collectTailorResults(batchId)) {
+      if (res.ok) {
+        await applyTailorResult(res.jobId, res.content, res.usage).catch((e) => console.error(`[pipeline] apply ${res.jobId} failed:`, e instanceof Error ? e.message : e));
+        tailored++;
+      } else {
+        await markTailorFailed(res.jobId, res.error);
+      }
+    }
+    console.log(`[pipeline] batch ${batchId}: applied (${tailored}/${requests.length} tailored so far)`);
+  }
+  return tailored;
+}
+
+/** Restart recovery: re-attach any still-open batches and finish them, so a server
+ *  restart mid-batch doesn't leave jobs stuck "tailoring" (Anthropic keeps results
+ *  29 days). Runs detached; called on boot from instrumentation.ts. */
+export async function resumeOpenBatches(): Promise<void> {
+  if (!BATCH_TAILOR) return;
+  let ids: string[];
+  try {
+    ids = await listOpenBatchIds();
+  } catch (e) {
+    console.error("[pipeline] listOpenBatchIds failed:", e instanceof Error ? e.message : e);
+    return;
+  }
+  if (!ids.length) return;
+  console.log(`[pipeline] re-attaching ${ids.length} open batch(es) after restart`);
+  for (const batchId of ids) {
+    void (async () => {
+      if (!(await waitForBatch(batchId))) return;
+      for (const res of await collectTailorResults(batchId)) {
+        if (res.ok) await applyTailorResult(res.jobId, res.content, res.usage).catch(() => {});
+        else await markTailorFailed(res.jobId, res.error);
+      }
+      console.log(`[pipeline] recovered batch ${batchId}`);
+    })().catch((e) => console.error(`[pipeline] resume batch ${batchId} failed:`, e instanceof Error ? e.message : e));
   }
 }

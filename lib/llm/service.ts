@@ -1,5 +1,6 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import { generateStructuredOpenAI } from "@/lib/llm/openai";
-import { generateStructured, DEFAULT_MODEL as CLAUDE_TAILOR_MODEL } from "@/lib/llm/anthropic";
+import { generateStructured, buildStructuredParams, DEFAULT_MODEL as CLAUDE_TAILOR_MODEL } from "@/lib/llm/anthropic";
 import { generateStructuredExtract } from "@/lib/llm/balance";
 import { deepStripDashes, dedupeExperienceProjects } from "@/lib/sanitize";
 import {
@@ -61,8 +62,8 @@ export async function extractJobFields(rawText: string): Promise<JobFields> {
   });
 }
 
-/** Tailor a resume to a job, with or without a base resume. */
-export async function tailorResume(args: {
+/** Inputs to tailor one resume (shared by the synchronous and Batch API paths). */
+export type TailorArgs = {
   mode: "with_base" | "from_scratch";
   profile: ProfileForLLM;
   job: JobForLLM;
@@ -76,36 +77,46 @@ export async function tailorResume(args: {
   atsSkills?: AtsSkills | null;
   /** Target Skills-section size (from Settings). */
   skills?: SkillsSize;
-}): Promise<ResumeContent> {
-  // The client's global custom instructions apply to every tailoring, layered
-  // with any per-job instructions.
+};
+
+// Merge global + per-job instructions and pick the with-base vs from-scratch
+// prompt builder. Returns the { system, userStatic, userDynamic } blocks.
+function buildTailorPrompt(args: TailorArgs): { system: string; userStatic: string; userDynamic: string } {
   const instructions =
     [args.customInstructions, args.instructions].map((s) => s?.trim()).filter(Boolean).join("\n\n") || undefined;
+  return args.mode === "with_base" && args.baseResume?.trim()
+    ? buildTailorWithBasePrompt({ profile: args.profile, job: args.job, baseResume: args.baseResume, instructions, atsSkills: args.atsSkills, skills: args.skills })
+    : buildFromScratchPrompt({ profile: args.profile, job: args.job, instructions, atsSkills: args.atsSkills, skills: args.skills });
+}
 
-  const built =
-    args.mode === "with_base" && args.baseResume?.trim()
-      ? buildTailorWithBasePrompt({
-          profile: args.profile,
-          job: args.job,
-          baseResume: args.baseResume,
-          instructions,
-          atsSkills: args.atsSkills,
-          skills: args.skills,
-        })
-      : buildFromScratchPrompt({
-          profile: args.profile,
-          job: args.job,
-          instructions,
-          atsSkills: args.atsSkills,
-          skills: args.skills,
-        });
+/**
+ * The exact Anthropic Messages request for one tailor — used by both the sync
+ * path and the Batch API, so a batched tailor is byte-identical to a live one.
+ * userStatic (profile + base resume) is the cachePrefix; max_tokens 4000.
+ */
+export function buildTailorParams(args: TailorArgs): Anthropic.MessageCreateParamsNonStreaming {
+  const built = buildTailorPrompt(args);
+  return buildStructuredParams({
+    schema: ResumeContentSchema,
+    system: built.system,
+    cachePrefix: built.userStatic,
+    prompt: built.userDynamic,
+    model: args.model,
+    maxTokens: 4000,
+  });
+}
 
-  // Tailoring runs on Claude (extraction stays on OpenAI). Claude follows the
-  // volume/format guidelines (4-7 bullets/subgroup, no cliché openers) reliably.
-  const content = await tailorViaProvider(built, args.model);
-  // Normalize en/em dashes to plain hyphens (humans don't type the long ones),
-  // then drop any bullets duplicated across a company's subgroups.
+/** Post-process a raw tailored resume: normalize en/em dashes to plain hyphens,
+ *  then drop any bullets duplicated across a company's subgroups. Shared by both paths. */
+export function finalizeTailored(content: ResumeContent): ResumeContent {
   return dedupeExperienceProjects(deepStripDashes(content));
+}
+
+/** Tailor a resume to a job synchronously (interactive UI + fallback). */
+export async function tailorResume(args: TailorArgs): Promise<ResumeContent> {
+  const built = buildTailorPrompt(args);
+  const content = await tailorViaProvider(built, args.model);
+  return finalizeTailored(content);
 }
 
 // Tailoring runs on Anthropic (Claude). A tailored resume is ~1.2-2k output
