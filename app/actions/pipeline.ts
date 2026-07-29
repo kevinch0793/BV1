@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { getSettings } from "@/lib/settings";
+import { getSettings, getGlobalModel } from "@/lib/settings";
 import { requireClient } from "@/lib/auth";
 import { assertOwnsProfile, assertOwnsJob } from "@/lib/owner";
 import { startPipeline as start, isPipelineRunning } from "@/lib/pipeline";
@@ -15,8 +15,9 @@ import { normalizeUrl } from "@/lib/url";
  */
 export async function startPipeline(profileId: string): Promise<{ ok: true }> {
   const clientId = await assertOwnsProfile(profileId);
-  const { defaultTemplate, tailoringModel, skills } = await getSettings(clientId);
-  await start(profileId, { templateId: defaultTemplate, model: tailoringModel, clientId, skills });
+  const { defaultTemplate, skills } = await getSettings(clientId);
+  const model = await getGlobalModel();
+  await start(profileId, { templateId: defaultTemplate, model, clientId, skills });
   return { ok: true };
 }
 
@@ -102,8 +103,9 @@ export async function ensurePipelineRunning(profileId: string): Promise<{ runnin
   });
   if (work === 0) return { running: false };
 
-  const { defaultTemplate, tailoringModel, skills } = await getSettings(clientId);
-  await start(profileId, { templateId: defaultTemplate, model: tailoringModel, clientId, skills });
+  const { defaultTemplate, skills } = await getSettings(clientId);
+  const model = await getGlobalModel();
+  await start(profileId, { templateId: defaultTemplate, model, clientId, skills });
   return { running: true };
 }
 

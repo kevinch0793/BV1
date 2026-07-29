@@ -5,7 +5,7 @@ import { createTailorBatch, waitForBatch, collectTailorResults, listOpenBatchIds
 import { type ResumeContent } from "@/lib/llm/schema";
 import { llmProfileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { extractJdSkills, scoreFit, profileToText, type JdSkills } from "@/lib/llm/ats";
-import { getCustomInstructions, getSettings, type SkillsConfig } from "@/lib/settings";
+import { getCustomInstructions, getSettings, getGlobalModel, type SkillsConfig } from "@/lib/settings";
 import { pruneOldActivity } from "@/lib/retention";
 import { withUsage, withKind, recordUsage } from "@/lib/llm/usage";
 import { FairLimiter } from "@/lib/fairLimiter";
@@ -81,8 +81,9 @@ export async function resumeAllPipelines(): Promise<void> {
     try {
       const profile = await prisma.profile.findUnique({ where: { id: profileId }, select: { clientId: true } });
       if (!profile) continue;
-      const { defaultTemplate, tailoringModel, skills } = await getSettings(profile.clientId);
-      await startPipeline(profileId, { templateId: defaultTemplate, model: tailoringModel, clientId: profile.clientId, skills });
+      const { defaultTemplate, skills } = await getSettings(profile.clientId);
+      const model = await getGlobalModel();
+      await startPipeline(profileId, { templateId: defaultTemplate, model, clientId: profile.clientId, skills });
     } catch (e) {
       console.error(`[pipeline] startup resume failed for profile ${profileId}:`, e instanceof Error ? e.message : e);
     }

@@ -87,7 +87,7 @@ model Settings {
   resumeFont         String   @default("default") // resume font family id (default = template's own fonts)
   resumeAccent       String   @default("default") // resume accent color id (default = template's own colors)
   resumeFontScale    Int      @default(100) // deprecated: font-size feature removed; column kept but unused
-  tailoringModel     String   @default("claude-sonnet-4-6") // Claude model used for tailoring
+  tailoringModel     String   @default("claude-sonnet-4-6") // DEPRECATED: superseded by the global, admin-set AppConfig.tailoringModel (applies to ALL clients). Column kept for back-compat; no longer read.
   // Skills-section size: the resume fills to this range (drawing on the profile's
   // own skills + role-relevant defaults) even when the JD lists few skills.
   skillsMinCategories Int     @default(4)
@@ -95,6 +95,15 @@ model Settings {
   skillsMinItems      Int     @default(6)
   skillsMaxItems      Int     @default(9)
   updatedAt          DateTime @updatedAt
+}
+
+/// App-wide configuration — a single row (id = "global"). Admin-controlled and
+/// shared across ALL clients, unlike per-client Settings. Currently just the
+/// tailoring model used for every resume tailoring, regardless of profile owner.
+model AppConfig {
+  id             String   @id @default("global")
+  tailoringModel String   @default("claude-sonnet-4-6") // Claude model used for ALL tailoring (admin-set)
+  updatedAt      DateTime @updatedAt
 }
 
 /// A distinct identity used to generate resumes (name, contact, history).

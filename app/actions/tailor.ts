@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { llmProfileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { tailorResume } from "@/lib/llm/service";
 import { computeFit, profileToText } from "@/lib/llm/ats";
-import { getSettings } from "@/lib/settings";
+import { getSettings, getGlobalModel } from "@/lib/settings";
 import { assertOwnsProfile, assertOwnsJob, assertOwnsTailored, ownedByProfileWhere } from "@/lib/owner";
 import { withUsage } from "@/lib/llm/usage";
 import type { ResumeContent } from "@/lib/llm/schema";
@@ -21,7 +21,6 @@ export async function generateTailored(args: {
   jobId?: string;
   mode: "with_base" | "from_scratch";
   instructions?: string;
-  model?: string;
 }): Promise<TailorResult> {
   const clientId = await assertOwnsProfile(args.profileId);
   const profile = await prisma.profile.findFirst({
@@ -53,6 +52,8 @@ export async function generateTailored(args: {
   }
 
   const { customInstructions, skills } = await getSettings(clientId);
+  // Model is the global, admin-set choice (not user-selectable) — applies to all tailoring.
+  const model = await getGlobalModel();
   try {
     const content = await withUsage(
       { clientId, profileId: args.profileId, jobId: args.jobId ?? null, kind: "tailor" },
@@ -64,7 +65,7 @@ export async function generateTailored(args: {
           baseResume: profile.baseResume?.rawText,
           instructions: args.instructions,
           customInstructions,
-          model: args.model,
+          model,
           skills,
         }),
     );
@@ -148,7 +149,7 @@ export type AutoTailorResult = { ok: boolean; error?: string; tailoredId?: strin
  */
 export async function autoTailorJob(
   jobId: string,
-  opts?: { templateId?: string; model?: string; instructions?: string },
+  opts?: { templateId?: string; instructions?: string },
 ): Promise<AutoTailorResult> {
   const clientId = await assertOwnsJob(jobId);
   const job = await prisma.jobPosting.findFirst({ where: { id: jobId, profile: { clientId } } });
@@ -177,6 +178,7 @@ export async function autoTailorJob(
 
   const profileForLLM = toProfileForLLM(profile);
   const { customInstructions, skills } = await getSettings(clientId);
+  const model = await getGlobalModel();
   let content: ResumeContent;
   try {
     content = await withUsage(
@@ -189,7 +191,7 @@ export async function autoTailorJob(
           baseResume: profile.baseResume?.rawText,
           instructions: opts?.instructions,
           customInstructions,
-          model: opts?.model,
+          model,
           skills,
         }),
     );

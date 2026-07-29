@@ -3,17 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { randomBytes, createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
-import { parseSectionOrder } from "@/lib/settings";
-import { requireClient } from "@/lib/auth";
+import { parseSectionOrder, setGlobalModel, TAILORING_MODELS, DEFAULT_TAILORING_MODEL } from "@/lib/settings";
+import { requireClient, requireAdmin } from "@/lib/auth";
 
+/**
+ * Set the GLOBAL tailoring model — ADMIN ONLY. One app-wide value that governs
+ * every client's tailoring (sync, batch, and interactive), not a per-client setting.
+ */
 export async function updateTailoringModel(formData: FormData) {
-  const { id: clientId } = await requireClient();
-  const tailoringModel = String(formData.get("tailoringModel") ?? "claude-sonnet-4-6");
-  await prisma.settings.upsert({
-    where: { clientId },
-    create: { clientId, tailoringModel },
-    update: { tailoringModel },
-  });
+  await requireAdmin();
+  const raw = String(formData.get("tailoringModel") ?? DEFAULT_TAILORING_MODEL);
+  // Only allow known model ids (a crafted POST can't inject an arbitrary model).
+  const tailoringModel = TAILORING_MODELS.some((m) => m.id === raw) ? raw : DEFAULT_TAILORING_MODEL;
+  await setGlobalModel(tailoringModel);
   revalidatePath("/settings");
 }
 

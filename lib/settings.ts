@@ -9,6 +9,33 @@ export const TAILORING_MODELS = [
   { id: "claude-opus-4-8", label: "Claude Opus 4.8 (highest quality)" },
 ] as const;
 
+export const DEFAULT_TAILORING_MODEL = "claude-sonnet-4-6";
+
+// The tailoring model is a GLOBAL, admin-controlled setting (one row in AppConfig,
+// id = "global") that governs EVERY client's tailoring — not a per-client setting.
+const APP_CONFIG_ID = "global";
+
+/** The single, admin-set model used for ALL tailoring (sync + batch + interactive).
+ *  Defaults to Sonnet 4.6 when unset. Never throws — falls back to the default if
+ *  the AppConfig row/table isn't there yet (e.g. before the migration is applied). */
+export async function getGlobalModel(): Promise<string> {
+  try {
+    const cfg = await prisma.appConfig.findUnique({ where: { id: APP_CONFIG_ID } });
+    return cfg?.tailoringModel ?? DEFAULT_TAILORING_MODEL;
+  } catch {
+    return DEFAULT_TAILORING_MODEL;
+  }
+}
+
+/** Set the global tailoring model (admin only — the caller must enforce that). */
+export async function setGlobalModel(tailoringModel: string): Promise<void> {
+  await prisma.appConfig.upsert({
+    where: { id: APP_CONFIG_ID },
+    create: { id: APP_CONFIG_ID, tailoringModel },
+    update: { tailoringModel },
+  });
+}
+
 /** Target size of the Skills section (filled from profile + role-relevant defaults). */
 export type SkillsConfig = { minCategories: number; maxCategories: number; minItems: number; maxItems: number };
 
@@ -20,7 +47,6 @@ export type AppSettings = {
   defaultTemplate: string;
   resumeFont: string;
   resumeAccent: string;
-  tailoringModel: string;
   skills: SkillsConfig;
 };
 
@@ -44,7 +70,6 @@ export async function getSettings(clientId: string): Promise<AppSettings> {
     defaultTemplate: s?.defaultTemplate ?? "modern",
     resumeFont: s?.resumeFont ?? "default",
     resumeAccent: s?.resumeAccent ?? "default",
-    tailoringModel: s?.tailoringModel ?? "claude-sonnet-4-6",
     skills: cleanSkills(s),
   };
 }

@@ -1,4 +1,4 @@
-import { getSettings, TAILORING_MODELS } from "@/lib/settings";
+import { getSettings, getGlobalModel, TAILORING_MODELS } from "@/lib/settings";
 import { updateSettings, updateTailoringModel, updateSkillsConfig } from "@/app/actions/settings";
 import { requireClient } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -25,9 +25,11 @@ const saveBtn =
   "rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-neutral-900";
 
 export default async function SettingsPage() {
-  const { id: clientId } = await requireClient();
-  const settings = await getSettings(clientId);
-  const [profiles, answerTokens] = await Promise.all([
+  const { id: clientId, role } = await requireClient();
+  const isAdmin = role === "admin";
+  const [settings, globalModel, profiles, answerTokens] = await Promise.all([
+    getSettings(clientId),
+    getGlobalModel(),
     prisma.profile.findMany({ where: { clientId }, orderBy: { createdAt: "asc" }, select: { id: true, fullName: true, label: true } }),
     prisma.answerToken.findMany({ where: { clientId }, select: { id: true, profileId: true, createdAt: true, lastUsedAt: true } }),
   ]);
@@ -50,22 +52,25 @@ export default async function SettingsPage() {
         </ul>
       </section>
 
-      {/* Tailoring model */}
-      <section className="rounded-xl border border-neutral-200 bg-white p-5">
-        <h2 className="text-lg font-semibold text-neutral-900">Tailoring model</h2>
-        <p className="mb-3 text-xs text-neutral-500">The Claude model used to tailor every resume. (Resume/JD parsing always uses a fast model.)</p>
-        <DirtyForm action={updateTailoringModel} className="space-y-2">
-          <label className="flex flex-col gap-1 text-sm font-medium text-neutral-700">
-            Model
-            <select name="tailoringModel" defaultValue={settings.tailoringModel} className={`${input} max-w-xs`}>
-              {TAILORING_MODELS.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
-            </select>
-          </label>
-          <button data-save className={saveBtn}>Save model</button>
-        </DirtyForm>
-      </section>
+      {/* Tailoring model — admin only. This is a GLOBAL setting: one model governs
+          every client's tailoring, so it's hidden from non-admin clients. */}
+      {isAdmin && (
+        <section className="rounded-xl border border-neutral-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-neutral-900">Tailoring model <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700">Admin</span></h2>
+          <p className="mb-3 text-xs text-neutral-500">The Claude model used to tailor every resume, for <strong>all clients</strong> (global). Resume/JD parsing always uses a fast model.</p>
+          <DirtyForm action={updateTailoringModel} className="space-y-2">
+            <label className="flex flex-col gap-1 text-sm font-medium text-neutral-700">
+              Model
+              <select name="tailoringModel" defaultValue={globalModel} className={`${input} max-w-xs`}>
+                {TAILORING_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+            </label>
+            <button data-save className={saveBtn}>Save model</button>
+          </DirtyForm>
+        </section>
+      )}
 
       {/* Skills section size */}
       <section className="rounded-xl border border-neutral-200 bg-white p-5">

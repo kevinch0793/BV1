@@ -6,11 +6,6 @@ import { ResumePreview, normalizeTemplate, type TemplateId, type TemplateOption 
 import type { SectionKey } from "@/lib/sections";
 import { generateTailored, saveTailored } from "@/app/actions/tailor";
 
-const MODELS = [
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 (recommended)" },
-  { id: "claude-opus-4-8", label: "Claude Opus 4.8 (highest quality)" },
-];
-
 const input =
   "w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500";
 const label = "flex flex-col gap-1 text-xs font-medium text-neutral-600";
@@ -41,7 +36,6 @@ export function TailorWorkspace({
   const [mode, setMode] = useState<Mode>(hasBaseResume ? "with_base" : "from_scratch");
   const [jobId, setJobId] = useState<string>(jobs[0]?.id ?? "");
   const [template, setTemplate] = useState<TemplateId>(normalizeTemplate(defaultTemplate));
-  const [model, setModel] = useState(MODELS[0].id);
   const [instructions, setInstructions] = useState("");
 
   const [content, setContent] = useState<ResumeContent | null>(null);
@@ -57,7 +51,7 @@ export function TailorWorkspace({
     setError(null);
     setSavedMsg(null);
     startGen(async () => {
-      const r = await generateTailored({ profileId, jobId: jobId || undefined, mode, instructions, model });
+      const r = await generateTailored({ profileId, jobId: jobId || undefined, mode, instructions });
       if (r.ok) setContent(r.content);
       else setError(r.error);
     });
@@ -120,15 +114,6 @@ export function TailorWorkspace({
               placeholder="e.g. Emphasize leadership and distributed systems; keep to one page."
               className={input}
             />
-          </label>
-
-          <label className={label}>
-            Model
-            <select value={model} onChange={(e) => setModel(e.target.value)} className={input}>
-              {MODELS.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
-            </select>
           </label>
 
           <button
