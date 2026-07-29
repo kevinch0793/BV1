@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { generateStructuredOpenAI } from "@/lib/llm/openai";
 import { generateStructured, buildStructuredParams, DEFAULT_MODEL as CLAUDE_TAILOR_MODEL } from "@/lib/llm/anthropic";
+import { providerForModel } from "@/lib/settings";
 import { generateStructuredExtract } from "@/lib/llm/balance";
 import { deepStripDashes, dedupeExperienceProjects } from "@/lib/sanitize";
 import {
@@ -119,21 +120,34 @@ export async function tailorResume(args: TailorArgs): Promise<ResumeContent> {
   return finalizeTailored(content);
 }
 
-// Tailoring runs on Anthropic (Claude). A tailored resume is ~1.2-2k output
-// tokens (measured); the 4000 cap stays tight so many calls fit the per-minute
-// budget. The Anthropic SDK retries transient 429s (maxRetries in anthropic.ts).
-// userStatic (profile + base resume) is passed as cachePrefix so all of one
-// profile's jobs reuse it as a cache read instead of re-billing it every time.
+// Tailoring runs on the globally-selected model — Claude (Anthropic) by default,
+// or GPT (OpenAI) when an OpenAI model is chosen. A tailored resume is ~1.2-2k
+// output tokens (measured); the 4000 cap stays tight so many calls fit the
+// per-minute budget. On Claude, userStatic (profile + base resume) is passed as a
+// cachePrefix so a profile's jobs reuse it as a cache read; the Anthropic SDK
+// retries transient 429s. OpenAI has no cache-prefix param, so its two user blocks
+// are concatenated (static first, so OpenAI's automatic prefix caching still helps).
 async function tailorViaProvider(
   built: { system: string; userStatic: string; userDynamic: string },
   model?: string,
 ): Promise<ResumeContent> {
+  const chosen = model ?? CLAUDE_TAILOR_MODEL;
+  if (providerForModel(chosen) === "openai") {
+    return generateStructuredOpenAI({
+      schema: ResumeContentSchema,
+      schemaName: "resume_content",
+      system: built.system,
+      prompt: `${built.userStatic}\n\n${built.userDynamic}`,
+      model: chosen,
+      maxTokens: 4000,
+    });
+  }
   return generateStructured({
     schema: ResumeContentSchema,
     system: built.system,
     cachePrefix: built.userStatic,
     prompt: built.userDynamic,
-    model: model ?? CLAUDE_TAILOR_MODEL,
+    model: chosen,
     maxTokens: 4000,
   });
 }

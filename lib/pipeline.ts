@@ -5,7 +5,7 @@ import { createTailorBatch, waitForBatch, collectTailorResults, listOpenBatchIds
 import { type ResumeContent } from "@/lib/llm/schema";
 import { llmProfileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { extractJdSkills, scoreFit, profileToText, type JdSkills } from "@/lib/llm/ats";
-import { getCustomInstructions, getSettings, getGlobalModel, type SkillsConfig } from "@/lib/settings";
+import { getCustomInstructions, getSettings, getGlobalModel, providerForModel, type SkillsConfig } from "@/lib/settings";
 import { pruneOldActivity } from "@/lib/retention";
 import { withUsage, withKind, recordUsage } from "@/lib/llm/usage";
 import { FairLimiter } from "@/lib/fairLimiter";
@@ -166,8 +166,12 @@ async function loop(profileId: string): Promise<void> {
   });
   const canTailor = !!profile && (!!profile.baseResume || profile._count.experiences > 0);
 
-  const useBatch = BATCH_TAILOR && canTailor;
   const opts = running.get(profileId) ?? {};
+  // Batch tailoring goes through the Anthropic Batch API, so it only applies to
+  // Claude models — a GPT model would be rejected there. When an OpenAI model is
+  // the global choice, always take the synchronous per-job path (which routes to
+  // OpenAI in tailorViaProvider), even if TAILOR_BATCH=1.
+  const useBatch = BATCH_TAILOR && canTailor && providerForModel(opts.model ?? "") !== "openai";
   // Re-gather between rounds so URLs/pastes added mid-run get picked up. Each
   // round runs its jobs concurrently. Failures move jobs to "failed", so they
   // drop out of the next gather and the loop converges.

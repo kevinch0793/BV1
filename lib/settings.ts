@@ -5,11 +5,23 @@ export type { SectionKey } from "@/lib/sections";
 export { SECTION_KEYS, SECTION_LABELS, parseSectionOrder } from "@/lib/sections";
 
 export const TAILORING_MODELS = [
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 (recommended)" },
-  { id: "claude-opus-4-8", label: "Claude Opus 4.8 (highest quality)" },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 (recommended)", provider: "anthropic" },
+  { id: "claude-opus-4-8", label: "Claude Opus 4.8 (highest quality)", provider: "anthropic" },
+  { id: "gpt-4o", label: "GPT-4o (OpenAI)", provider: "openai" },
 ] as const;
 
 export const DEFAULT_TAILORING_MODEL = "claude-sonnet-4-6";
+
+export type TailoringProvider = "anthropic" | "openai";
+
+/** Which LLM provider a tailoring model id runs on. Looks the id up in
+ *  TAILORING_MODELS; for any unlisted/legacy id, falls back to a "gpt" prefix
+ *  check (so non-GPT strings default to Anthropic, preserving prior behavior). */
+export function providerForModel(model: string): TailoringProvider {
+  const known = TAILORING_MODELS.find((m) => m.id === model);
+  if (known) return known.provider;
+  return model.startsWith("gpt") ? "openai" : "anthropic";
+}
 
 // The tailoring model is a GLOBAL, admin-controlled setting (one row in AppConfig,
 // id = "global") that governs EVERY client's tailoring — not a per-client setting.
