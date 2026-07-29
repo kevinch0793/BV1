@@ -6,7 +6,7 @@ import { type ResumeContent } from "@/lib/llm/schema";
 import { llmProfileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { extractJdSkills, scoreFit, profileToText, type JdSkills } from "@/lib/llm/ats";
 import { getCustomInstructions, getSettings, getGlobalModel, providerForModel, type SkillsConfig } from "@/lib/settings";
-import { pruneOldActivity } from "@/lib/retention";
+import { pruneOldActivity, pruneStaleIncomplete, activeCutoff } from "@/lib/retention";
 import { withUsage, withKind, recordUsage } from "@/lib/llm/usage";
 import { FairLimiter } from "@/lib/fairLimiter";
 import type { JobForLLM } from "@/lib/llm/prompts";
@@ -43,9 +43,11 @@ export async function startPipeline(profileId: string, opts: PipelineOpts): Prom
     return;
   }
 
-  // Retention: prune activity older than the 30-day window. Fire-and-forget so a
-  // fresh pipeline run keeps the database bounded without blocking processing.
+  // Retention: prune activity older than the 30-day window + non-completed jobs
+  // older than yesterday. Fire-and-forget so a fresh run keeps the DB bounded
+  // without blocking processing.
   void pruneOldActivity().catch(() => {});
+  void pruneStaleIncomplete().catch(() => {});
 
   // Fresh start: recover any states left mid-flight by a previous interrupted run.
   await prisma.jobPosting.updateMany({ where: { profileId, status: "fetching" }, data: { status: "pending" } });
@@ -90,6 +92,22 @@ export async function startProfilePipeline(profileId: string): Promise<void> {
 }
 
 /**
+ * Reset a profile's failed jobs that already have a usable JD (description ≥ 200
+ * chars) back to "fetched", so the pipeline re-tailors them. These typically
+ * failed on the tailor call (e.g. a transient or usage-limit error), not the
+ * fetch — the JD is in hand. Returns how many were re-queued. Deliberately invoked
+ * ONLY from the explicit admin resume path (not boot/self-heal), so it can't turn
+ * a persistently-failing job into an automatic retry loop. Raw UPDATE (no id IN
+ * list) so it scales regardless of how many failed.
+ */
+export async function retryFailedWithJd(profileId: string): Promise<number> {
+  return prisma.$executeRaw`
+    UPDATE "JobPosting" SET "status" = 'fetched', "error" = NULL
+    WHERE "profileId" = ${profileId} AND "status" = 'failed'
+      AND length(json_extract("descriptionParsed", '$.description')) >= 200`;
+}
+
+/**
  * On server startup, resume the pipeline for EVERY profile that still has
  * unfinished work (pending / stuck fetching|tailoring / fetched-but-untailored),
  * so a restart auto-continues without each dashboard needing to be opened.
@@ -101,6 +119,7 @@ export async function resumeAllPipelines(): Promise<void> {
   const rows = await prisma.jobPosting.findMany({
     where: {
       profile: { paused: false },
+      createdAt: { gte: activeCutoff() }, // only yesterday+today; older stale work is pruned, not resumed
       OR: [
         { status: "pending" },
         { status: "fetching" },
@@ -185,7 +204,7 @@ async function loop(profileId: string): Promise<void> {
       // fetched-untailored jobs together through the Anthropic Batch API — 50% off,
       // byte-identical output. Fetch and tailor are separate phases because a batch
       // can only be submitted once all its JDs are in hand.
-      const pending = await prisma.jobPosting.findMany({ where: { profileId, status: "pending" }, select: { id: true }, orderBy: { createdAt: "asc" } });
+      const pending = await prisma.jobPosting.findMany({ where: { profileId, createdAt: { gte: activeCutoff() }, status: "pending" }, select: { id: true }, orderBy: { createdAt: "asc" } });
       if (pending.length) {
         await Promise.all(
           pending.map((j) =>
@@ -195,14 +214,15 @@ async function loop(profileId: string): Promise<void> {
           ),
         );
       }
-      const toTailor = await prisma.jobPosting.findMany({ where: { profileId, status: "fetched", tailored: { none: {} } }, select: { id: true }, orderBy: { createdAt: "asc" } });
+      const toTailor = await prisma.jobPosting.findMany({ where: { profileId, createdAt: { gte: activeCutoff() }, status: "fetched", tailored: { none: {} } }, select: { id: true }, orderBy: { createdAt: "asc" } });
       if (pending.length === 0 && toTailor.length === 0) break;
       if (toTailor.length) await batchTailorJobs(profileId, toTailor.map((j) => j.id));
     } else {
       // Synchronous mode (default, proven): fetch + tailor each job in one pass.
+      const cutoff = activeCutoff(); // only process yesterday+today; older stale work is pruned
       const where = canTailor
-        ? { profileId, OR: [{ status: "pending" }, { status: "fetched", tailored: { none: {} } }] }
-        : { profileId, status: "pending" };
+        ? { profileId, createdAt: { gte: cutoff }, OR: [{ status: "pending" }, { status: "fetched", tailored: { none: {} } }] }
+        : { profileId, createdAt: { gte: cutoff }, status: "pending" };
       const jobs = await prisma.jobPosting.findMany({ where, select: { id: true }, orderBy: { createdAt: "asc" } });
       if (jobs.length === 0) break;
       // Every job goes through the shared global slot, so all profiles' loops

@@ -37,6 +37,30 @@ export async function pruneOldActivity(opts?: { vacuum?: boolean }): Promise<{ j
   return { jobs: jobs.count, resumes: resumes.count };
 }
 
+// Incomplete work only matters for the current + previous app-day ("yesterday and
+// today"). Older jobs that never completed are stale: the pipeline ignores them
+// (its gather is scoped to this window) and they're removed on the retention run.
+export const INCOMPLETE_KEEP_DAYS = 2;
+
+/** Start of yesterday's app-day. Jobs created before this are 2+ app-days old. */
+export function activeCutoff(): Date {
+  return retentionCutoff(INCOMPLETE_KEEP_DAYS);
+}
+
+/**
+ * Remove NON-COMPLETED jobs older than yesterday (created before activeCutoff()).
+ * "Completed" = has a tailored resume — those are kept as history (up to the 30-day
+ * window). So stale pending / fetching / tailoring / fetched-but-untailored /
+ * failed / needs_jd rows are deleted; a job that ever produced a resume is never
+ * touched. Safe to fire-and-forget.
+ */
+export async function pruneStaleIncomplete(): Promise<{ jobs: number }> {
+  const res = await prisma.jobPosting.deleteMany({
+    where: { createdAt: { lt: activeCutoff() }, tailored: { none: {} } },
+  });
+  return { jobs: res.count };
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 let started = false;
 
@@ -50,8 +74,17 @@ export function startRetentionSchedule(): void {
   started = true;
   const run = async () => {
     try {
-      const r = await pruneOldActivity({ vacuum: true });
-      if (r.jobs + r.resumes > 0) console.log(`[retention] pruned ${r.jobs} jobs, ${r.resumes} orphan resumes (>30d) and compacted the database`);
+      const stale = await pruneStaleIncomplete(); // non-completed jobs older than yesterday
+      const r = await pruneOldActivity({ vacuum: false }); // everything older than 30 days
+      const removed = stale.jobs + r.jobs + r.resumes;
+      if (removed > 0) {
+        try {
+          await prisma.$executeRawUnsafe("VACUUM");
+        } catch {
+          // VACUUM needs an exclusive lock; if the DB is busy, skip — the next run compacts.
+        }
+        console.log(`[retention] pruned ${stale.jobs} stale-incomplete + ${r.jobs} old jobs + ${r.resumes} orphan resumes; compacted`);
+      }
     } catch (e) {
       console.error("[retention] prune failed:", (e as Error).message);
     }

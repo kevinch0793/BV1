@@ -5,7 +5,8 @@ import { prisma } from "@/lib/db";
 import { getSettings, getGlobalModel } from "@/lib/settings";
 import { requireClient, requireAdmin } from "@/lib/auth";
 import { assertOwnsProfile, assertOwnsJob } from "@/lib/owner";
-import { startPipeline as start, isPipelineRunning, isProfilePaused, startProfilePipeline, resumeAllPipelines } from "@/lib/pipeline";
+import { startPipeline as start, isPipelineRunning, isProfilePaused, startProfilePipeline, resumeAllPipelines, retryFailedWithJd } from "@/lib/pipeline";
+import { activeCutoff } from "@/lib/retention";
 import { normalizeUrl } from "@/lib/url";
 
 /**
@@ -32,14 +33,21 @@ export async function pipelineRunning(profileId: string): Promise<boolean> {
  * work (the engine checks the flag) and blocks add-URL / paste-JD / retry (those
  * actions check it too). Resuming re-kicks the incomplete work.
  */
-export async function setProfilePaused(profileId: string, paused: boolean): Promise<{ ok: true }> {
+export async function setProfilePaused(profileId: string, paused: boolean): Promise<{ ok: true; retried: number }> {
   await requireAdmin();
   await prisma.profile.update({ where: { id: profileId }, data: { paused } });
-  if (!paused) await startProfilePipeline(profileId);
+  let retried = 0;
+  if (!paused) {
+    // Resuming a profile = "rerun": also re-queue its failed-but-fetched jobs
+    // (which usually failed on the tailor step, e.g. a usage-limit error) so they
+    // get tailored again, then start the loop to process them.
+    retried = await retryFailedWithJd(profileId);
+    await startProfilePipeline(profileId);
+  }
   revalidatePath("/");
   revalidatePath("/profiles");
   revalidatePath(`/profiles/${profileId}/dashboard`);
-  return { ok: true };
+  return { ok: true, retried };
 }
 
 /** Admin: pause or resume ALL profiles at once (bulk-sets each profile's flag). */
@@ -119,6 +127,7 @@ export async function ensurePipelineRunning(profileId: string): Promise<{ runnin
   const work = await prisma.jobPosting.count({
     where: {
       profileId,
+      createdAt: { gte: activeCutoff() }, // only yesterday+today counts as resumable work
       OR: [
         { status: "pending" },
         { status: "fetching" },
