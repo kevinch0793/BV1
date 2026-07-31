@@ -6,6 +6,7 @@ import { fuzzyScore } from "@/lib/fuzzy";
 import { workplaceOf, briefState, type Workplace } from "@/lib/location";
 import { ColumnSearch } from "@/components/ColumnSearch";
 import { ViewResumeButton } from "@/components/ViewResumeButton";
+import { ViewJdButton } from "@/components/ViewJdButton";
 
 export const dynamic = "force-dynamic";
 
@@ -143,11 +144,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    {j.url ? (
-                      <a href={j.url} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap text-xs font-medium text-sky-700 hover:underline">Open&nbsp;↗</a>
-                    ) : (
-                      <span className="text-neutral-300">—</span>
-                    )}
+                    <ViewJdButton jobId={j.id} />
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-neutral-600">
                     {j.applyStatus === "applied" && j.appliedAt ? fmtDate(j.appliedAt) : <span className="text-neutral-300">—</span>}

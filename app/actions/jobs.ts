@@ -12,6 +12,25 @@ const PAUSED_MSG = "This profile is paused by an admin — resume it to add or f
 
 export type JobActionResult = { ok: boolean; error?: string; needsPaste?: boolean };
 
+export type JobJd = { company: string | null; role: string | null; location: string | null; url: string | null; jd: string };
+
+/**
+ * Load a job's stored plain-text JD — for the search "View JD" modal, so a saved
+ * posting stays readable even after its original URL expires. Prefers the parsed
+ * description, falling back to the raw fetched page text.
+ */
+export async function getJobJd(jobId: string): Promise<JobJd | null> {
+  await assertOwnsJob(jobId);
+  const job = await prisma.jobPosting.findUnique({
+    where: { id: jobId },
+    select: { company: true, role: true, location: true, url: true, descriptionParsed: true, descriptionRaw: true },
+  });
+  if (!job) return null;
+  const parsed = (job.descriptionParsed as { description?: string } | null) ?? {};
+  const jd = parsed.description?.trim() || job.descriptionRaw?.trim() || "";
+  return { company: job.company, role: job.role, location: job.location, url: job.url, jd };
+}
+
 /** Inline-edit a job's company / role — manual correction, e.g. for rows the
  *  fetcher couldn't read (needs_jd). Only the provided fields are touched. */
 export async function updateJobFields(
