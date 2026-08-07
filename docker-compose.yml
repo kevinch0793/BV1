@@ -1,0 +1,43 @@
+services:
+  app:
+    build: .
+    image: bv1-resume-app
+    restart: unless-stopped
+
+    ports:
+      - "3000:3000"
+
+    # Secrets come from .env at RUN time (never baked into the image).
+    env_file:
+      - .env
+
+    # These override anything of the same name in .env.
+    environment:
+      # The .env value (file:./prisma/dev.db) points inside the image, which would
+      # be wiped on every rebuild. Redirect to the mounted volume instead.
+      DATABASE_URL: "file:/data/dev.db"
+      NODE_ENV: "production"
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      # Headless Chrome renders the PDF by loading the app from INSIDE this
+      # container, so it must stay a local address.
+      INTERNAL_BASE_URL: "http://127.0.0.1:3000"
+
+    # A NAMED VOLUME, deliberately not a bind mount to a Windows folder. SQLite
+    # relies on file locking, and locking over the Docker Desktop host-filesystem
+    # share is unreliable — it produces intermittent "database is locked" and
+    # corruption. A named volume lives in the Linux VM, where locking behaves.
+    volumes:
+      - bv1-data:/data
+
+    # Chrome uses shared memory heavily and crashes on Docker's default 64MB
+    # /dev/shm. Only the PDF export would break, and only under load.
+    shm_size: "1gb"
+
+    # Run tini as PID 1. Headless Chrome spawns a tree of child processes; without
+    # an init, the exited ones accumulate as zombies inside the container because
+    # node does not reap orphans. Also guarantees signals are forwarded on stop.
+    init: true
+
+volumes:
+  bv1-data:

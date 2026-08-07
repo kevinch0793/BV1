@@ -1,0 +1,32 @@
+# Build context excludes. Keeping these OUT matters:
+#  - node_modules / .next: rebuilt inside the image for Linux (the host copies are
+#    macOS/Windows-native and would break or bloat the image)
+#  - lib/generated: Prisma's generated client is regenerated during the build, so a
+#    stale host copy must not overwrite it
+#  - .env: secrets are passed at RUN time (compose env_file), never baked into a layer
+#  - prisma/*.db*: the database lives in a Docker volume, not in the image
+node_modules
+.next
+lib/generated
+.git
+.gitignore
+
+.env
+.env.*
+
+prisma/*.db
+prisma/*.db-wal
+prisma/*.db-shm
+prisma/*.db-journal
+
+Dockerfile
+.dockerignore
+docker-compose.yml
+DOCKER.md
+
+tsconfig.tsbuildinfo
+.DS_Store
+**/.DS_Store
+npm-debug.log*
+extension
+README.md
