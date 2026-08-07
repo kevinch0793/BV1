@@ -4,10 +4,25 @@ import { parseSectionOrder, type SectionKey } from "@/lib/sections";
 export type { SectionKey } from "@/lib/sections";
 export { SECTION_KEYS, SECTION_LABELS, parseSectionOrder } from "@/lib/sections";
 
+// The OpenAI entries are deliberately limited to models that spend ~no reasoning
+// tokens. Tailoring calls cap output at max_completion_tokens 4000 (see
+// buildStructuredParams / generateStructuredOpenAI), and on OpenAI a reasoning
+// model's hidden reasoning tokens are drawn from that SAME budget — a tailored
+// resume is already ~1.2-2k output tokens, so a heavy reasoner can exhaust the cap
+// and return NO structured output (the job then fails with "OpenAI returned no
+// structured output"). Measured on the tailoring call shape: gpt-5 burned 1856
+// reasoning tokens (35s) and gpt-5-mini 576 on a trivial prompt, while every model
+// listed below used ~0. Before adding a reasoning model here (gpt-5, o3, o4-mini),
+// raise maxTokens for it in lib/llm/service.ts first.
 export const TAILORING_MODELS = [
   { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 (recommended)", provider: "anthropic" },
   { id: "claude-opus-4-8", label: "Claude Opus 4.8 (highest quality)", provider: "anthropic" },
-  { id: "gpt-4o", label: "GPT-4o (OpenAI)", provider: "openai" },
+  { id: "gpt-5.6-sol", label: "GPT-5.6 Sol (OpenAI, newest)", provider: "openai" },
+  { id: "gpt-5.4", label: "GPT-5.4 (OpenAI)", provider: "openai" },
+  { id: "gpt-5.2", label: "GPT-5.2 (OpenAI)", provider: "openai" },
+  { id: "gpt-5.1", label: "GPT-5.1 (OpenAI)", provider: "openai" },
+  { id: "gpt-4.1", label: "GPT-4.1 (OpenAI)", provider: "openai" },
+  { id: "gpt-4o", label: "GPT-4o (OpenAI, fastest)", provider: "openai" },
 ] as const;
 
 export const DEFAULT_TAILORING_MODEL = "claude-sonnet-4-6";

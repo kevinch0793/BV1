@@ -57,7 +57,7 @@ export default async function SettingsPage() {
       {isAdmin && (
         <section className="rounded-xl border border-neutral-200 bg-white p-5">
           <h2 className="text-lg font-semibold text-neutral-900">Tailoring model <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700">Admin</span></h2>
-          <p className="mb-3 text-xs text-neutral-500">The Claude model used to tailor every resume, for <strong>all clients</strong> (global). Resume/JD parsing always uses a fast model.</p>
+          <p className="mb-3 text-xs text-neutral-500">The model used to tailor every resume, for <strong>all clients</strong> (global) — Claude or GPT. Resume/JD parsing always uses a fast model, independent of this choice.</p>
           <DirtyForm action={updateTailoringModel} className="space-y-2">
             <label className="flex flex-col gap-1 text-sm font-medium text-neutral-700">
               Model

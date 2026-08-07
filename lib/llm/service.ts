@@ -140,6 +140,8 @@ async function tailorViaProvider(
       prompt: `${built.userStatic}\n\n${built.userDynamic}`,
       model: chosen,
       maxTokens: 4000,
+      // Bill tailoring to the dedicated tailoring key when one is configured.
+      keyPurpose: "tailor",
     });
   }
   return generateStructured({
