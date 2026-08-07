@@ -103,6 +103,14 @@ model Settings {
 model AppConfig {
   id             String   @id @default("global")
   tailoringModel String   @default("claude-sonnet-4-6") // Claude model used for ALL tailoring (admin-set)
+  // Admin notice shown to EVERY signed-in client (see components/NoticeBanner).
+  // noticeActive is separate from the text so a notice can be switched off and
+  // back on without retyping it. noticeUpdatedAt is what makes an edited notice
+  // re-appear for people who already dismissed the previous one.
+  noticeText      String? // null/blank = nothing to show
+  noticeKind      String    @default("info") // info | success | warning | critical
+  noticeActive    Boolean   @default(false)
+  noticeUpdatedAt DateTime?
   updatedAt      DateTime @updatedAt
 }
 

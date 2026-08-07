@@ -3,7 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { randomBytes, createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
-import { parseSectionOrder, setGlobalModel, TAILORING_MODELS, DEFAULT_TAILORING_MODEL } from "@/lib/settings";
+import {
+  parseSectionOrder,
+  setGlobalModel,
+  setNotice,
+  isNoticeKind,
+  DEFAULT_NOTICE_KIND,
+  TAILORING_MODELS,
+  DEFAULT_TAILORING_MODEL,
+} from "@/lib/settings";
 import { requireClient, requireAdmin } from "@/lib/auth";
 
 /**
@@ -17,6 +25,22 @@ export async function updateTailoringModel(formData: FormData) {
   const tailoringModel = TAILORING_MODELS.some((m) => m.id === raw) ? raw : DEFAULT_TAILORING_MODEL;
   await setGlobalModel(tailoringModel);
   revalidatePath("/settings");
+}
+
+/**
+ * Save the app-wide notice — ADMIN ONLY. One message shown to every signed-in
+ * client, independent of who owns which profile.
+ */
+export async function updateNotice(formData: FormData) {
+  await requireAdmin();
+  const rawKind = String(formData.get("noticeKind") ?? DEFAULT_NOTICE_KIND);
+  // Only known kinds — a crafted POST can't inject arbitrary text into the class
+  // names the banner renders.
+  const kind = isNoticeKind(rawKind) ? rawKind : DEFAULT_NOTICE_KIND;
+  const text = String(formData.get("noticeText") ?? "").slice(0, 2000);
+  await setNotice({ text, kind, active: formData.get("noticeActive") === "on" });
+  // The banner lives in the root layout, so every route renders it.
+  revalidatePath("/", "layout");
 }
 
 export async function updateSkillsConfig(formData: FormData) {

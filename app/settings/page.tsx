@@ -1,5 +1,5 @@
-import { getSettings, getGlobalModel, TAILORING_MODELS } from "@/lib/settings";
-import { updateSettings, updateTailoringModel, updateSkillsConfig } from "@/app/actions/settings";
+import { getSettings, getGlobalModel, getNoticeDraft, TAILORING_MODELS, NOTICE_KINDS } from "@/lib/settings";
+import { updateSettings, updateTailoringModel, updateSkillsConfig, updateNotice } from "@/app/actions/settings";
 import { requireClient } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { DirtyForm } from "@/components/DirtyForm";
@@ -27,9 +27,10 @@ const saveBtn =
 export default async function SettingsPage() {
   const { id: clientId, role } = await requireClient();
   const isAdmin = role === "admin";
-  const [settings, globalModel, profiles, answerTokens] = await Promise.all([
+  const [settings, globalModel, notice, profiles, answerTokens] = await Promise.all([
     getSettings(clientId),
     getGlobalModel(),
+    getNoticeDraft(),
     prisma.profile.findMany({ where: { clientId }, orderBy: { createdAt: "asc" }, select: { id: true, fullName: true, label: true } }),
     prisma.answerToken.findMany({ where: { clientId }, select: { id: true, profileId: true, createdAt: true, lastUsedAt: true } }),
   ]);
@@ -68,6 +69,46 @@ export default async function SettingsPage() {
               </select>
             </label>
             <button data-save className={saveBtn}>Save model</button>
+          </DirtyForm>
+        </section>
+      )}
+
+      {/* Site-wide notice — admin only. Renders in the root layout, so it appears
+          on every page for every signed-in client. */}
+      {isAdmin && (
+        <section className="rounded-xl border border-neutral-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-neutral-900">Notice to all users <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700">Admin</span></h2>
+          <p className="mb-3 text-xs text-neutral-500">
+            A banner shown at the top of every page to <strong>all signed-in clients</strong>. Users can dismiss it, and it stays
+            dismissed until you edit the message — an edit shows it to everyone again. <strong>Critical</strong> notices cannot be dismissed.
+          </p>
+          <DirtyForm action={updateNotice} className="space-y-3">
+            <label className="flex flex-col gap-1 text-sm font-medium text-neutral-700">
+              Message
+              <textarea
+                name="noticeText"
+                rows={3}
+                maxLength={2000}
+                defaultValue={notice.text}
+                placeholder="e.g. Tailoring is paused tonight from 10pm while we top up API credits."
+                className={input}
+              />
+            </label>
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+              <label className="flex flex-col gap-1 text-sm font-medium text-neutral-700">
+                Style
+                <select name="noticeKind" defaultValue={notice.kind} className={`${input} max-w-xs`}>
+                  {NOTICE_KINDS.map((k) => (
+                    <option key={k.id} value={k.id}>{k.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-2 pb-1.5 text-sm font-medium text-neutral-700">
+                <input type="checkbox" name="noticeActive" defaultChecked={notice.active} className="h-4 w-4 rounded border-neutral-300" />
+                Show it now
+              </label>
+            </div>
+            <button data-save className={saveBtn}>Save notice</button>
           </DirtyForm>
         </section>
       )}

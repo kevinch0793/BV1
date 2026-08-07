@@ -63,6 +63,83 @@ export async function setGlobalModel(tailoringModel: string): Promise<void> {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Admin notice — one message, set by an admin, shown to every signed-in client.
+// ---------------------------------------------------------------------------
+
+/** The visual treatments an admin can pick for the notice. */
+export const NOTICE_KINDS = [
+  { id: "info", label: "Info (blue)" },
+  { id: "success", label: "Success (green)" },
+  { id: "warning", label: "Warning (amber)" },
+  { id: "critical", label: "Critical (red)" },
+] as const;
+
+export type NoticeKind = (typeof NOTICE_KINDS)[number]["id"];
+export const DEFAULT_NOTICE_KIND: NoticeKind = "info";
+
+export function isNoticeKind(v: string): v is NoticeKind {
+  return NOTICE_KINDS.some((k) => k.id === v);
+}
+
+export type AdminNotice = {
+  text: string;
+  kind: NoticeKind;
+  active: boolean;
+  /** Identifies THIS version of the notice, so an edit re-shows it to people who
+   *  dismissed the previous one. Empty when there's nothing to show. */
+  version: string;
+};
+
+/**
+ * The notice to render, or null when there is nothing to show. Never throws —
+ * falls back to null if the AppConfig row or its notice columns aren't there yet
+ * (i.e. before the migration is applied), matching getGlobalModel's approach so a
+ * missing column can't take down every page's layout.
+ */
+export async function getNotice(): Promise<AdminNotice | null> {
+  try {
+    const cfg = await prisma.appConfig.findUnique({ where: { id: APP_CONFIG_ID } });
+    const text = cfg?.noticeText?.trim() ?? "";
+    if (!cfg?.noticeActive || !text) return null;
+    const kind = cfg.noticeKind && isNoticeKind(cfg.noticeKind) ? cfg.noticeKind : DEFAULT_NOTICE_KIND;
+    return { text, kind, active: true, version: `${cfg.noticeUpdatedAt?.getTime() ?? 0}` };
+  } catch {
+    return null;
+  }
+}
+
+/** The raw notice fields for the admin editor — unlike getNotice(), this returns
+ *  the stored text even when the notice is switched off, so it can be edited. */
+export async function getNoticeDraft(): Promise<{ text: string; kind: NoticeKind; active: boolean }> {
+  try {
+    const cfg = await prisma.appConfig.findUnique({ where: { id: APP_CONFIG_ID } });
+    return {
+      text: cfg?.noticeText ?? "",
+      kind: cfg?.noticeKind && isNoticeKind(cfg.noticeKind) ? cfg.noticeKind : DEFAULT_NOTICE_KIND,
+      active: cfg?.noticeActive ?? false,
+    };
+  } catch {
+    return { text: "", kind: DEFAULT_NOTICE_KIND, active: false };
+  }
+}
+
+/** Save the notice (admin only — the caller must enforce that). Stamps
+ *  noticeUpdatedAt so an edited notice reappears for everyone. */
+export async function setNotice(input: { text: string; kind: NoticeKind; active: boolean }): Promise<void> {
+  const data = {
+    noticeText: input.text.trim() || null,
+    noticeKind: input.kind,
+    noticeActive: input.active,
+    noticeUpdatedAt: new Date(),
+  };
+  await prisma.appConfig.upsert({
+    where: { id: APP_CONFIG_ID },
+    create: { id: APP_CONFIG_ID, ...data },
+    update: data,
+  });
+}
+
 /** Target size of the Skills section (filled from profile + role-relevant defaults). */
 export type SkillsConfig = { minCategories: number; maxCategories: number; minItems: number; maxItems: number };
 

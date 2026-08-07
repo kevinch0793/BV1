@@ -46,3 +46,6 @@ next-env.d.ts
 /prisma/*.db-journal
 /prisma/*.db-wal
 /prisma/*.db-shm
+# Pre-migration database backups (dev.db.bak-<timestamp>) — hundreds of MB each,
+# and NOT matched by the /prisma/*.db rule above.
+/prisma/*.db.bak-*
