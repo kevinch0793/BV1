@@ -236,6 +236,14 @@ model TailoredResume {
   fitAfter     Int? // ATS keyword-coverage % of this tailored resume
   fitDetail    Json? // { jdSkills:{hardSkills,themes}, matched:[], missing:[] }
   createdAt    DateTime    @default(now())
+
+  // Prisma does not index foreign keys on SQLite. Without these, the pipeline's
+  // queue query — fetched jobs with no tailored resume, i.e. a NOT EXISTS on
+  // jobPostingId — scanned this whole table once per candidate job, and the
+  // cascade delete on job pruning did the same. Measured at 16k rows: 8.7s to
+  // return nothing, on every round of the loop and at every startup resume.
+  @@index([jobPostingId])
+  @@index([profileId])
 }
 
 /// One LLM call's usage — tokens + latency — for the admin analytics dashboard.
