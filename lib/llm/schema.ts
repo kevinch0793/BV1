@@ -118,10 +118,17 @@ export const JobFieldsSchema = z.object({
   company: z.string(),
   role: z.string(),
   location: z.string(),
+  // No .catch() fallback. The value decides whether the job is tailored at all
+  // (only "remote" is — see shouldTailorWorkplace), so silently substituting a
+  // real-looking mode for an unparseable one would skip the job for a reason that
+  // never happened, leaving nothing to notice. Strict-mode structured outputs
+  // constrain the model to these four values, so an off-grammar value means the
+  // response is untrustworthy generally: let it throw, and the caller marks the
+  // job "failed" with the error, which is visible and retryable from the
+  // dashboard.
   workplace: z
     .enum(["remote", "hybrid", "in-person", "onsite"])
-    .describe("Workplace mode classified from the posting")
-    .catch("onsite"),
+    .describe("Workplace mode classified from the posting"),
   description: z.string().describe("Full cleaned job description text"),
   requirements: z.array(z.string()).describe("Key requirements / qualifications"),
 });
