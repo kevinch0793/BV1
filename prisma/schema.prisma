@@ -206,6 +206,14 @@ model JobPosting {
   appliedTailored   Boolean? // did the application use a tailored resume?
 
   tailored TailoredResume[]
+
+  // The pipeline and the dashboard both filter by profile + status (queue
+  // gathering, the mid-flight status recovery on start) and by profile + date
+  // (the day view, which the dashboard re-renders on every poll). Without these
+  // every such query is a full table scan, which also lengthens how long the
+  // single SQLite writer holds its lock.
+  @@index([profileId, status])
+  @@index([profileId, createdAt])
 }
 
 /// A generated, JD-tailored resume tied to a profile (and optionally a job).
