@@ -198,7 +198,10 @@ model JobPosting {
   workplace         String? // remote | hybrid | in-person | onsite (LLM-classified)
   descriptionRaw    String?
   descriptionParsed Json? // { description, requirements[] }
-  status            String   @default("pending") // pending | fetched | failed
+  // pending | fetching | fetched | needs_jd | tailoring | skipped | failed
+  // "skipped" is terminal: fetched successfully but not fully remote, so the
+  // pipeline deliberately did not tailor it (see shouldTailorWorkplace).
+  status            String   @default("pending")
   error             String? // last fetch error, when status = failed
   createdAt         DateTime @default(now())
   applyStatus       String   @default("none") // none | applied | not_available

@@ -18,6 +18,23 @@ const US_CODES = new Set(Object.values(STATE_ABBR));
 
 export type Workplace = "Remote" | "Hybrid" | "In-Person" | "Onsite";
 
+/**
+ * Should this job be tailored, given its classified workplace mode? Only fully
+ * remote roles are; hybrid / in-person / onsite are skipped so no tailoring spend
+ * goes to a job that will not be applied to.
+ *
+ * An unclassified job (null/empty — rows fetched before classification existed,
+ * or an extraction that stored nothing) is NOT skipped. Skipping is the
+ * irreversible-by-default direction here: a job wrongly skipped is silently never
+ * tailored, while a job wrongly tailored merely costs one call. Absent evidence
+ * that a role is non-remote, tailor it.
+ */
+export function shouldTailorWorkplace(workplace: string | null | undefined): boolean {
+  const w = (workplace ?? "").trim().toLowerCase();
+  if (!w) return true;
+  return w === "remote";
+}
+
 const STORED_LABEL: Record<string, Workplace> = {
   remote: "Remote",
   hybrid: "Hybrid",

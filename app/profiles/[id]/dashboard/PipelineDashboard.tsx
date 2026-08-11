@@ -37,12 +37,16 @@ const STAGE: Record<string, { label: string; style: string }> = {
   needs_jd: { label: "Fetched", style: "bg-amber-100 text-amber-700" },
   tailoring: { label: "Tailoring…", style: "bg-violet-100 text-violet-700" },
   tailored: { label: "Tailored", style: "bg-emerald-100 text-emerald-700" },
+  // Fetched fine, but the role is not fully remote, so it was deliberately not
+  // tailored. Terminal — the queue never picks it up again. The JD is stored, so
+  // it can still be tailored by hand if the classification was wrong.
+  skipped: { label: "Skipped — not remote", style: "bg-neutral-100 text-neutral-500" },
   failed: { label: "Failed", style: "bg-red-100 text-red-700" },
 };
 
 function stageKey(job: Job): keyof typeof STAGE {
   if (job.tailoredId) return "tailored";
-  if (["fetching", "tailoring", "fetched", "needs_jd", "failed"].includes(job.status)) return job.status;
+  if (["fetching", "tailoring", "fetched", "needs_jd", "skipped", "failed"].includes(job.status)) return job.status;
   return "pending";
 }
 

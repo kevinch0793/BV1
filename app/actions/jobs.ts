@@ -6,6 +6,7 @@ import { findJobDescription } from "@/lib/scrape/fetchHtml";
 import { extractJobFields } from "@/lib/llm/service";
 import { assertOwnsProfile, assertOwnsJob } from "@/lib/owner";
 import { isProfilePaused } from "@/lib/pipeline";
+import { shouldTailorWorkplace } from "@/lib/location";
 import { normalizeUrl, normalizeUrls } from "@/lib/url";
 
 const PAUSED_MSG = "This profile is paused by an admin — resume it to add or fetch jobs.";
@@ -116,6 +117,9 @@ export async function fetchJob(jobId: string): Promise<JobActionResult> {
       return { ok: true };
     }
 
+    // Same remote-only rule the pipeline applies (see shouldTailorWorkplace), so a
+    // job fetched one-off from the dashboard lands in the same state it would have
+    // reached through the queue.
     await prisma.jobPosting.update({
       where: { id: jobId },
       data: {
@@ -125,7 +129,7 @@ export async function fetchJob(jobId: string): Promise<JobActionResult> {
         workplace: fields.workplace,
         descriptionRaw: fetched.text.slice(0, 20000),
         descriptionParsed: { description: fields.description, requirements: fields.requirements },
-        status: "fetched",
+        status: shouldTailorWorkplace(fields.workplace) ? "fetched" : "skipped",
         error: null,
       },
     });

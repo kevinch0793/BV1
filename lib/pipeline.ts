@@ -9,6 +9,7 @@ import { getCustomInstructions, getSettings, getGlobalModel, providerForModel, t
 import { pruneOldActivity, pruneStaleIncomplete, activeCutoff } from "@/lib/retention";
 import { withUsage, withKind, recordUsage } from "@/lib/llm/usage";
 import { FairLimiter } from "@/lib/fairLimiter";
+import { shouldTailorWorkplace } from "@/lib/location";
 import type { JobForLLM } from "@/lib/llm/prompts";
 
 // clientId is captured at the request-context action entry (startPipeline) and
@@ -312,6 +313,15 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
 
     if (process.env.LLM_DEBUG) console.log(`[pipeline] fetch job ${jobId} scrape=${scrapeMs}ms extract=${Date.now() - te}ms`);
 
+    // Only fully-remote roles are worth tailoring. The classification already
+    // happened during extraction above, so this costs nothing extra — it just
+    // stops the (paid, ~1 minute) tailor call from running on a job that will not
+    // be applied to. "skipped" is terminal: the queue gathers "fetched" rows with
+    // no tailored resume, so a skipped job is never re-picked on later rounds or
+    // after a restart. The JD is still stored, so the row stays searchable and can
+    // be tailored by hand from the dashboard if the classification was wrong.
+    const tailorable = shouldTailorWorkplace(fields.workplace);
+
     // Show the fetched fields ASAP and move on to tailoring. The ATS keyword list
     // is extracted lazily by the tailor (tailorJobNow handles a null atsSkills),
     // so it stays off the fetch critical path.
@@ -324,11 +334,11 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
         workplace: fields.workplace,
         descriptionRaw: fetched.text.slice(0, 20000),
         descriptionParsed: { description: fields.description, requirements: fields.requirements, atsSkills: null },
-        status: "fetched",
+        status: tailorable ? "fetched" : "skipped",
         error: null,
       },
     });
-    return true;
+    return tailorable;
   } catch (e) {
     await prisma.jobPosting.update({
       where: { id: jobId },
