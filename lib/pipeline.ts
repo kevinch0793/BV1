@@ -348,9 +348,28 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
   }
 }
 
+/**
+ * Mark a job as deliberately not tailored. Terminal: the queue gathers "fetched"
+ * rows with no tailored resume, so a skipped job is never picked up again — not on
+ * a later round, not by the startup resume.
+ */
+async function markSkipped(jobId: string): Promise<void> {
+  await prisma.jobPosting.update({ where: { id: jobId }, data: { status: "skipped", error: null } });
+}
+
 async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean> {
   const job = await prisma.jobPosting.findUnique({ where: { id: jobId } });
   if (!job) return false;
+
+  // The remote-only rule is enforced HERE as well as at fetch time, because this
+  // is where the money is spent. A job fetched before the rule existed still sits
+  // in "fetched" with its mode already classified, and the queue gathers on status
+  // alone — without this check that backlog is tailored regardless of mode.
+  if (!shouldTailorWorkplace(job.workplace)) {
+    await markSkipped(jobId);
+    return false;
+  }
+
   const profile = await prisma.profile.findUnique({ where: { id: job.profileId }, include: llmProfileInclude });
   if (!profile) return false;
 
@@ -448,6 +467,14 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
 async function prepareTailor(jobId: string, opts: PipelineOpts): Promise<TailorArgs | null> {
   const job = await prisma.jobPosting.findUnique({ where: { id: jobId } });
   if (!job) return null;
+
+  // Same remote-only rule as the synchronous path. Checked before the ATS-skills
+  // extraction below, which is itself a paid call.
+  if (!shouldTailorWorkplace(job.workplace)) {
+    await markSkipped(jobId);
+    return null;
+  }
+
   const profile = await prisma.profile.findUnique({ where: { id: job.profileId }, include: llmProfileInclude });
   if (!profile) return null;
   const mode: "with_base" | "from_scratch" = profile.baseResume ? "with_base" : "from_scratch";
