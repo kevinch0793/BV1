@@ -22,6 +22,23 @@ ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 FROM base AS builder
 WORKDIR /app
 
+# @puppeteer/browsers extracts the Chrome archive it downloads by shelling out to
+# `unzip`, which node:*-slim does not ship. Without it the `npm ci` postinstall
+# aborts with "Failed to set up chrome ... Required native binary ... was not
+# found in the system PATH" — a build-time failure, distinct from the runtime
+# shared-library set installed in the runner stage below.
+RUN apt-get update && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# `prisma generate` only emits the client — it never opens a connection — but
+# prisma.config.ts resolves env("DATABASE_URL") eagerly while loading, and .env is
+# deliberately kept out of the build context (see .dockerignore), so nothing
+# defines it here. A throwaway value satisfies the config load.
+#
+# Builder-stage only: the runner stage starts FROM base, so this never becomes
+# part of the final image. The real URL is injected by compose at run time.
+ENV DATABASE_URL="file:/tmp/build-placeholder.db"
+
 # Manifests + Prisma schema FIRST: `npm ci` runs the postinstall `prisma generate`,
 # which needs prisma/schema.prisma to exist. Keeping this layer separate from the
 # source means dependencies are only reinstalled when the lockfile changes.
