@@ -6,6 +6,13 @@ services:
 
     ports:
       - "3000:3000"
+      # Prisma Studio, started on demand (it is NOT part of the container's CMD):
+      #   docker compose exec -d app npx prisma studio --port 5555 --browser none
+      # Publishing the port here only reserves the mapping; nothing listens on it
+      # until Studio is launched. Keeping Studio in THIS container rather than a
+      # second one matters: SQLite allows a single writer, and two containers on
+      # the same volume would contend for the lock with the running server.
+      - "5555:5555"
 
     # Secrets come from .env at RUN time (never baked into the image).
     env_file:
