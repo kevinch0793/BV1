@@ -3,7 +3,7 @@ import { recentAppDayKeys, appDayRange } from "@/lib/appday";
 
 // Keep only the most recent N app-days of job activity in the database; older
 // jobs (and their tailored resumes, via cascade) are pruned automatically and
-// the freed pages are physically reclaimed (VACUUM) so searches stay fast.
+// the freed pages are physically reclaimed (incremental vacuum) so searches stay fast.
 export const RETENTION_DAYS = 30;
 // Usage events are tiny and feed the admin analytics trend, so keep a longer
 // window than raw job activity (survives the 30-day job prune).
@@ -14,12 +14,50 @@ export function retentionCutoff(days = RETENTION_DAYS): Date {
   return appDayRange(recentAppDayKeys(days)[0]).start;
 }
 
+// Pages reclaimed per compaction pass. At the 4KB page size that is ~80MB, which is well
+// above a day's churn, so the freelist does not accumulate between daily runs.
+const COMPACT_PAGES = 20_000;
+
+/**
+ * Return freed pages to the filesystem.
+ *
+ * The database runs with `auto_vacuum=INCREMENTAL`, so deleted pages go onto a freelist
+ * and this reclaims at most COMPACT_PAGES of them, holding the write lock only for that
+ * batch. A full `VACUUM` would instead rewrite the ENTIRE file under an exclusive lock —
+ * ~35s on a 400MB database, during which every request blocks and anything proxying in
+ * front returns a gateway error. Whatever is not reclaimed this pass stays on the
+ * freelist for the next one.
+ */
+let compactModeChecked = false;
+
+async function compact(): Promise<void> {
+  try {
+    // auto_vacuum is a property of the FILE, not the connection, and can only be turned
+    // on for an empty database or by a full VACUUM — so a file created before this was
+    // adopted stays in NONE mode, where incremental_vacuum is a silent no-op rather than
+    // an error. Say so once instead of letting the file grow unexplained.
+    if (!compactModeChecked) {
+      compactModeChecked = true;
+      const rows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>("PRAGMA auto_vacuum");
+      if (Number(Object.values(rows?.[0] ?? {})[0]) !== 2) {
+        console.warn(
+          "[retention] auto_vacuum is not INCREMENTAL — freed pages will not be reclaimed. " +
+            "Convert the database once with: PRAGMA auto_vacuum=INCREMENTAL; VACUUM;"
+        );
+      }
+    }
+    await prisma.$executeRawUnsafe(`PRAGMA incremental_vacuum(${COMPACT_PAGES})`);
+  } catch {
+    // Busy — the freelist simply carries over to the next run.
+  }
+}
+
 /**
  * Delete activity older than the retention window: job postings (which cascade
  * to their tailored resumes) plus any job-less manual resumes. With
  * `vacuum: true`, physically reclaims the freed file space afterwards (only when
- * something was actually deleted). VACUUM takes an exclusive lock, so callers in
- * a hot path (the pipeline) should leave it off and let the scheduler compact.
+ * something was actually deleted) — see compact() for why that is now bounded
+ * rather than a full rewrite.
  */
 export async function pruneOldActivity(opts?: { vacuum?: boolean }): Promise<{ jobs: number; resumes: number }> {
   const cutoff = retentionCutoff();
@@ -28,11 +66,7 @@ export async function pruneOldActivity(opts?: { vacuum?: boolean }): Promise<{ j
   // Prune usage events on their own (longer) window so the analytics trend survives.
   await prisma.usageEvent.deleteMany({ where: { createdAt: { lt: retentionCutoff(USAGE_RETENTION_DAYS) } } }).catch(() => {});
   if (opts?.vacuum && jobs.count + resumes.count > 0) {
-    try {
-      await prisma.$executeRawUnsafe("VACUUM");
-    } catch {
-      // VACUUM needs an exclusive lock; if the DB is busy, skip — the next run compacts.
-    }
+    await compact();
   }
   return { jobs: jobs.count, resumes: resumes.count };
 }
@@ -78,11 +112,7 @@ export function startRetentionSchedule(): void {
       const r = await pruneOldActivity({ vacuum: false }); // everything older than 30 days
       const removed = stale.jobs + r.jobs + r.resumes;
       if (removed > 0) {
-        try {
-          await prisma.$executeRawUnsafe("VACUUM");
-        } catch {
-          // VACUUM needs an exclusive lock; if the DB is busy, skip — the next run compacts.
-        }
+        await compact();
         console.log(`[retention] pruned ${stale.jobs} stale-incomplete + ${r.jobs} old jobs + ${r.resumes} orphan resumes; compacted`);
       }
     } catch (e) {
