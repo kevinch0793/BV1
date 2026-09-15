@@ -6,6 +6,10 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // Lets a test import the module under test by its real filename, which is what
+    // node --test requires (ESM resolution does not guess extensions). Emit-free,
+    // so this only relaxes what the checker accepts.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

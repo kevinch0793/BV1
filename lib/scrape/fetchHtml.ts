@@ -1,5 +1,4 @@
 import * as cheerio from "cheerio";
-import { renderPageText } from "@/lib/export/pdf";
 
 export type FetchResult =
   | { ok: true; text: string; sourceUrl: string }
@@ -393,7 +392,13 @@ export async function findJobDescription(url: string, opts: { render?: boolean }
   // headless Chrome and read the JD back. Only this URL is loaded — no link
   // following. Bounded by MAX_RENDERS (lib/export/pdf.ts).
   let rendered: string | null = null;
-  if (opts.render !== false) rendered = await renderPageText(url).catch(() => null);
+  if (opts.render !== false) {
+    // Loaded lazily. Everything else in this module is string/HTML work, while the
+    // renderer pulls in puppeteer, so a plain fetch never drags a browser onto the
+    // module graph -- and the parsing above stays exercisable without one.
+    const { renderPageText } = await import("@/lib/export/pdf");
+    rendered = await renderPageText(url).catch(() => null);
+  }
   if (rendered && (looksLikeJD(rendered) || rendered.length >= 600)) return { ok: true, text: rendered, sourceUrl: url };
 
   // Still no recognizable JD. If we at least REACHED a page, hand back its best
