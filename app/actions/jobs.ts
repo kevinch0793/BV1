@@ -194,6 +194,11 @@ export async function setJobFromText(
         company: fields.company,
         role: fields.role,
         location: fields.location,
+        // Re-classify from the pasted text. This row reached "needs_jd" because the
+        // fetch found no JD, so any workplace stored then was guessed from a shell
+        // page's boilerplate — leaving it would let that guess skip a job whose real
+        // JD is now in hand.
+        workplace: fields.workplace,
         descriptionRaw: text.slice(0, 20000),
         descriptionParsed: { description: fields.description, requirements: fields.requirements },
         status: "fetched",

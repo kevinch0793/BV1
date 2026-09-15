@@ -38,13 +38,33 @@ function locText(loc: unknown): string {
   const arr = Array.isArray(loc) ? loc : [loc];
   return arr
     .map((l) => {
-      const a = (l && typeof l === "object" ? ((l as Record<string, unknown>).address ?? l) : {}) as Record<string, unknown>;
-      return [a.addressLocality, a.addressRegion, a.addressCountry]
-        .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
-        .join(", ");
+      const o = (l && typeof l === "object" ? l : {}) as Record<string, unknown>;
+      const a = (o.address ?? o) as Record<string, unknown>;
+      const parts = [a.addressLocality, a.addressRegion, a.addressCountry].filter(
+        (x): x is string => typeof x === "string" && x.trim().length > 0,
+      );
+      if (parts.length) return parts.join(", ");
+      // Country / State / AdministrativeArea nodes carry a plain `name` instead of
+      // a postal address. applicantLocationRequirements is almost always one of
+      // those, so without this fallback a remote posting's eligible region reads
+      // as empty.
+      return typeof o.name === "string" ? o.name.trim() : "";
     })
     .filter(Boolean)
     .join(" / ");
+}
+
+/**
+ * schema.org flags a remote role with jobLocationType "TELECOMMUTE". A remote
+ * posting usually still carries a jobLocation (the hiring office), so reading
+ * only the address yields a plain city and nothing that says "remote" — and the
+ * extractor defaults an unmarked posting to "onsite", which the pipeline skips
+ * terminally. The flag has to be surfaced in the text the model reads.
+ */
+function isTelecommute(v: unknown): boolean {
+  return ([] as unknown[])
+    .concat(v ?? [])
+    .some((x) => String(typeof x === "object" && x ? ((x as Record<string, unknown>).name ?? "") : x).toLowerCase().includes("telecommute"));
 }
 
 /** Pull a schema.org JobPosting out of any <script type="application/ld+json">. */
@@ -80,11 +100,18 @@ function jsonLdJobText($: cheerio.CheerioAPI): string | null {
         item.hiringOrganization && typeof item.hiringOrganization === "object"
           ? String((item.hiringOrganization as Record<string, unknown>).name ?? "")
           : "";
-      const location = locText(item.jobLocation) || locText(item.applicantLocationRequirements);
+      const remote = isTelecommute(item.jobLocationType);
+      const eligible = locText(item.applicantLocationRequirements);
+      const location = locText(item.jobLocation) || eligible;
       const header = [
         title && `Title: ${title}`,
         company && `Company: ${company}`,
+        // Stated before Location so the mode comes from the posting's own flag
+        // rather than being inferred from an office address a remote role may
+        // still list.
+        remote ? "Workplace: Remote" : "",
         location && `Location: ${location}`,
+        remote && eligible && eligible !== location ? `Remote eligibility: ${eligible}` : "",
       ]
         .filter(Boolean)
         .join("\n");
@@ -96,7 +123,19 @@ function jsonLdJobText($: cheerio.CheerioAPI): string | null {
 
 function bodyText($: cheerio.CheerioAPI): string {
   const clone = cheerio.load($.html());
-  clone("script, style, noscript, svg, nav, footer, header, form, iframe").remove();
+  // <header> is deliberately NOT stripped: ATS boards render the posting's title
+  // and its location / workplace chip inside one, so removing it drops the only
+  // "Remote" marker on the page. Site chrome is already excluded by scoping to
+  // <main> below (and by nav/footer), so keeping it costs a little boilerplate --
+  // which the extractor is told to clean -- rather than a wrong terminal skip.
+  clone("script, style, noscript, svg, nav, footer, form, iframe").remove();
+  // cheerio's .text() concatenates sibling elements with no separator, so a chip
+  // runs into its neighbours ("Platform EngineerRemoteFull-time") and the very
+  // marker the header was kept for stops reading as its own word. Give block
+  // nodes a line break and inline ones a space before flattening.
+  clone("br").replaceWith("\n");
+  clone("p, div, section, article, header, h1, h2, h3, h4, h5, h6, li, tr").append("\n");
+  clone("span, a, td, th, strong, em, label").append(" ");
   const root = clone("main").length ? clone("main") : clone("body");
   return root.text().replace(/[ \t]+/g, " ").replace(/\n\s*\n\s*\n+/g, "\n\n").trim();
 }
@@ -281,10 +320,14 @@ async function trySmartRecruiters(url: string): Promise<string | null> {
     if (body.length < 100) return null;
     const title = typeof j.name === "string" ? j.name : "";
     const companyName = (j.company as Record<string, unknown> | undefined)?.name;
-    const location = (j.location as Record<string, unknown> | undefined)?.fullLocation;
+    const loc = j.location as Record<string, unknown> | undefined;
+    const location = loc?.fullLocation;
     const header = [
       title && `Title: ${title}`,
       typeof companyName === "string" && companyName ? `Company: ${companyName}` : "",
+      // SmartRecruiters states the mode as its own boolean; fullLocation stays the
+      // office city even for a fully-remote posting.
+      loc?.remote === true ? "Workplace: Remote" : "",
       typeof location === "string" && location ? `Location: ${location}` : "",
     ]
       .filter(Boolean)

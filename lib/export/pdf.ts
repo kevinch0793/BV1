@@ -229,7 +229,44 @@ async function renderInPage(page: Page, url: string): Promise<string | null> {
             if (isJob && it.description) {
               const d = document.createElement("div");
               d.innerHTML = String(it.description);
-              return tidy((it.title ? `Title: ${it.title}\n\n` : "") + (d.textContent || ""));
+              // Mirrors the header built in lib/scrape/fetchHtml.ts. Returning the
+              // JSON-LD description alone drops the posting's workplace flag and
+              // location -- even though the rendered page visibly shows them -- and
+              // an unmarked posting is classified "onsite" and skipped for good.
+              const place = (v: unknown): string =>
+                ([] as unknown[])
+                  .concat((v ?? []) as unknown[])
+                  .map((l) => {
+                    const o = (l && typeof l === "object" ? l : {}) as Record<string, unknown>;
+                    const a = (o.address ?? o) as Record<string, unknown>;
+                    const parts = [a.addressLocality, a.addressRegion, a.addressCountry].filter(
+                      (x): x is string => typeof x === "string" && x.trim().length > 0,
+                    );
+                    return parts.length ? parts.join(", ") : typeof o.name === "string" ? o.name.trim() : "";
+                  })
+                  .filter(Boolean)
+                  .join(" / ");
+              const remote = ([] as unknown[])
+                .concat((it.jobLocationType ?? []) as unknown[])
+                .some((x) =>
+                  String(x && typeof x === "object" ? ((x as Record<string, unknown>).name ?? "") : x)
+                    .toLowerCase()
+                    .includes("telecommute"),
+                );
+              const eligible = place(it.applicantLocationRequirements);
+              const office = place(it.jobLocation) || eligible;
+              const org =
+                it.hiringOrganization && typeof it.hiringOrganization === "object" ? String(it.hiringOrganization.name ?? "") : "";
+              const head = [
+                it.title ? `Title: ${it.title}` : "",
+                org ? `Company: ${org}` : "",
+                remote ? "Workplace: Remote" : "",
+                office ? `Location: ${office}` : "",
+                remote && eligible && eligible !== office ? `Remote eligibility: ${eligible}` : "",
+              ]
+                .filter(Boolean)
+                .join("\n");
+              return tidy((head ? head + "\n\n" : "") + (d.textContent || ""));
             }
           }
         } catch {
