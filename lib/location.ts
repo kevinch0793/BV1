@@ -23,15 +23,17 @@ export type Workplace = "Remote" | "Hybrid" | "In-Person" | "Onsite";
  * remote roles are; hybrid / in-person / onsite are skipped so no tailoring spend
  * goes to a job that will not be applied to.
  *
- * An unclassified job (null/empty — rows fetched before classification existed,
- * or an extraction that stored nothing) is NOT skipped. Skipping is the
- * irreversible-by-default direction here: a job wrongly skipped is silently never
- * tailored, while a job wrongly tailored merely costs one call. Absent evidence
+ * An unclassified job is NOT skipped: null/empty (rows fetched before
+ * classification existed, or an extraction that stored nothing) and "unknown"
+ * (the extractor found no workplace wording and no work location) both tailor.
+ * Skipping is the irreversible-by-default direction here: a job wrongly skipped is
+ * silently never tailored -- and pruned within two app-days, so the mistake erases
+ * itself -- while a job wrongly tailored merely costs one call. Absent evidence
  * that a role is non-remote, tailor it.
  */
 export function shouldTailorWorkplace(workplace: string | null | undefined): boolean {
   const w = (workplace ?? "").trim().toLowerCase();
-  if (!w) return true;
+  if (!w || w === "unknown") return true;
   return w === "remote";
 }
 

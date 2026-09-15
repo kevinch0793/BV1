@@ -195,7 +195,7 @@ model JobPosting {
   company           String?
   role              String?
   location          String?
-  workplace         String? // remote | hybrid | in-person | onsite (LLM-classified)
+  workplace         String? // remote | hybrid | in-person | onsite | unknown (LLM-classified; "unknown" = the posting stated no mode, which is tailored rather than skipped)
   descriptionRaw    String?
   descriptionParsed Json? // { description, requirements[] }
   // pending | fetching | fetched | needs_jd | tailoring | skipped | failed

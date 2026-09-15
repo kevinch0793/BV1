@@ -119,16 +119,22 @@ export const JobFieldsSchema = z.object({
   role: z.string(),
   location: z.string(),
   // No .catch() fallback. The value decides whether the job is tailored at all
-  // (only "remote" is — see shouldTailorWorkplace), so silently substituting a
-  // real-looking mode for an unparseable one would skip the job for a reason that
-  // never happened, leaving nothing to notice. Strict-mode structured outputs
-  // constrain the model to these four values, so an off-grammar value means the
-  // response is untrustworthy generally: let it throw, and the caller marks the
-  // job "failed" with the error, which is visible and retryable from the
-  // dashboard.
+  // (see shouldTailorWorkplace), so silently substituting a real-looking mode for
+  // an unparseable one would skip the job for a reason that never happened,
+  // leaving nothing to notice. Strict-mode structured outputs constrain the model
+  // to these values, so an off-grammar value means the response is untrustworthy
+  // generally: let it throw, and the caller marks the job "failed" with the error,
+  // which is visible and retryable from the dashboard.
+  //
+  // "unknown" exists so the model can report that the text gave it no basis to
+  // judge, rather than being forced to guess. Without it the only way to say
+  // "nothing here mentions a workplace" was "onsite" -- a terminal skip -- so a
+  // posting whose remote flag went missing upstream was indistinguishable from
+  // one genuinely tied to an office. Skipping should follow evidence of
+  // non-remote work, not the absence of evidence.
   workplace: z
-    .enum(["remote", "hybrid", "in-person", "onsite"])
-    .describe("Workplace mode classified from the posting"),
+    .enum(["remote", "hybrid", "in-person", "onsite", "unknown"])
+    .describe("Workplace mode stated by the posting; 'unknown' when it states none"),
   description: z.string().describe("Full cleaned job description text"),
   requirements: z.array(z.string()).describe("Key requirements / qualifications"),
 });
