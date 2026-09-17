@@ -246,15 +246,23 @@ async function renderInPage(page: Page, url: string): Promise<string | null> {
                   })
                   .filter(Boolean)
                   .join(" / ");
-              const remote = ([] as unknown[])
-                .concat((it.jobLocationType ?? []) as unknown[])
-                .some((x) =>
-                  String(x && typeof x === "object" ? ((x as Record<string, unknown>).name ?? "") : x)
-                    .toLowerCase()
-                    .includes("telecommute"),
-                );
               const eligible = place(it.applicantLocationRequirements);
               const office = place(it.jobLocation) || eligible;
+              // Mirrors locationSaysRemote in lib/scrape/fetchHtml.ts: many boards state
+              // the mode in the location rather than a structured flag. Matched against
+              // the LOCATION only -- a body mentioning "remote collaboration" must not
+              // count.
+              const saysRemote = /\b(remote|work[ -]?from[ -]?home|wfh|work[ -]?from[ -]?anywhere|anywhere)\b/i;
+              const remote =
+                ([] as unknown[])
+                  .concat((it.jobLocationType ?? []) as unknown[])
+                  .some((x) =>
+                    String(x && typeof x === "object" ? ((x as Record<string, unknown>).name ?? "") : x)
+                      .toLowerCase()
+                      .includes("telecommute"),
+                  ) ||
+                saysRemote.test(office) ||
+                saysRemote.test(eligible);
               const org =
                 it.hiringOrganization && typeof it.hiringOrganization === "object" ? String(it.hiringOrganization.name ?? "") : "";
               const head = [

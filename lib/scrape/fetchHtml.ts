@@ -60,6 +60,10 @@ function locText(loc: unknown): string {
  * extractor defaults an unmarked posting to "onsite", which the pipeline skips
  * terminally. The flag has to be surfaced in the text the model reads.
  */
+export function locationSaysRemote(location: string): boolean {
+  return /\b(remote|work[ -]?from[ -]?home|wfh|work[ -]?from[ -]?anywhere|anywhere)\b/i.test(location);
+}
+
 function isTelecommute(v: unknown): boolean {
   return ([] as unknown[])
     .concat(v ?? [])
@@ -99,9 +103,10 @@ function jsonLdJobText($: cheerio.CheerioAPI): string | null {
         item.hiringOrganization && typeof item.hiringOrganization === "object"
           ? String((item.hiringOrganization as Record<string, unknown>).name ?? "")
           : "";
-      const remote = isTelecommute(item.jobLocationType);
       const eligible = locText(item.applicantLocationRequirements);
       const location = locText(item.jobLocation) || eligible;
+      const remote =
+        isTelecommute(item.jobLocationType) || locationSaysRemote(location) || locationSaysRemote(eligible);
       const header = [
         title && `Title: ${title}`,
         company && `Company: ${company}`,
@@ -235,7 +240,16 @@ async function tryGreenhouse(url: string): Promise<string | null> {
       const title = typeof j.title === "string" ? j.title : "";
       const location =
         j.location && typeof j.location === "object" ? String((j.location as Record<string, unknown>).name ?? "") : "";
-      const header = [title && `Title: ${title}`, location && `Location: ${location}`].filter(Boolean).join("\n");
+      const header = [
+        title && `Title: ${title}`,
+        // Greenhouse puts the mode in location.name rather than a flag, e.g.
+        // "Bangalore, IN ; Pune, IN; Remote". Left as prose the extractor has been
+        // seen to answer "hybrid" off a posting whose body never says so.
+        locationSaysRemote(location) ? "Workplace: Remote" : "",
+        location && `Location: ${location}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
       return (header ? `${header}\n\n` : "") + description;
     } catch {
       continue;
@@ -273,7 +287,13 @@ async function tryAdpWorkforceNow(url: string): Promise<string | null> {
     if (description.length < 100) return null;
     const title = typeof j.requisitionTitle === "string" ? j.requisitionTitle : "";
     const location = adpLocation(j.requisitionLocations);
-    const header = [title && `Title: ${title}`, location && `Location: ${location}`].filter(Boolean).join("\n");
+    const header = [
+      title && `Title: ${title}`,
+      locationSaysRemote(location) ? "Workplace: Remote" : "",
+      location && `Location: ${location}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
     return (header ? `${header}\n\n` : "") + description;
   } catch {
     return null;
@@ -326,7 +346,7 @@ async function trySmartRecruiters(url: string): Promise<string | null> {
       typeof companyName === "string" && companyName ? `Company: ${companyName}` : "",
       // SmartRecruiters states the mode as its own boolean; fullLocation stays the
       // office city even for a fully-remote posting.
-      loc?.remote === true ? "Workplace: Remote" : "",
+      loc?.remote === true || locationSaysRemote(String(location ?? "")) ? "Workplace: Remote" : "",
       typeof location === "string" && location ? `Location: ${location}` : "",
     ]
       .filter(Boolean)
