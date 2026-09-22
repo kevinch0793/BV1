@@ -116,7 +116,7 @@ export async function retryFailedWithJd(profileId: string): Promise<number> {
  * are swallowed so one bad profile can't block the rest; runs detached. Paused
  * profiles are skipped (both by this query and the startPipeline guard).
  */
-export async function resumeAllPipelines(): Promise<void> {
+export async function resumeAllPipelines(reason: "startup" | "sweep" = "startup"): Promise<number> {
   const rows = await prisma.jobPosting.findMany({
     where: {
       profile: { paused: false },
@@ -138,7 +138,43 @@ export async function resumeAllPipelines(): Promise<void> {
       console.error(`[pipeline] startup resume failed for profile ${profileId}:`, e instanceof Error ? e.message : e);
     }
   }
-  console.log(`[pipeline] startup resume: kicked ${rows.length} profile(s) with unfinished work`);
+  // A sweep that found nothing is the normal case, so stay quiet unless it acted;
+  // startup always logs so a boot is traceable.
+  if (reason === "startup" || rows.length > 0) {
+    console.log(`[pipeline] ${reason} resume: kicked ${rows.length} profile(s) with unfinished work`);
+  }
+  return rows.length;
+}
+
+/** How often the sweep looks for unstarted work. */
+const SWEEP_MS = 3 * 60 * 1000;
+let sweepStarted = false;
+
+/**
+ * Periodically pick up pipeline work nobody has kicked off.
+ *
+ * Adding job URLs only writes "pending" rows -- it does not start the pipeline.
+ * Until this existed the pipeline ran only from a server start or from
+ * ensurePipelineRunning, which fires from the dashboard component, so a user who
+ * pasted URLs and closed the tab left that work untouched. It then LOOKED like
+ * tailoring was broken for that person while everyone with a dashboard open was
+ * served normally -- and pruneStaleIncomplete deletes untailored jobs after two
+ * app-days, so the abandoned work eventually disappeared rather than running.
+ *
+ * Safe to run often: startPipeline returns immediately for a profile already
+ * running, and paused profiles are excluded by the query and the start guard.
+ * Idempotent across HMR / repeated imports, and unref'd so it never holds the
+ * process open.
+ */
+export function startPipelineSchedule(): void {
+  if (sweepStarted) return;
+  sweepStarted = true;
+  const t = setInterval(() => {
+    void resumeAllPipelines("sweep").catch((e) =>
+      console.error("[pipeline] sweep failed:", e instanceof Error ? e.message : e),
+    );
+  }, SWEEP_MS);
+  (t as { unref?: () => void }).unref?.();
 }
 
 // GLOBAL cap on jobs processed at once — shared across ALL profiles, so submitting
