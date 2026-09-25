@@ -62,7 +62,19 @@ export function normalizeCompany(raw: string | null | undefined): string {
  * listed, which is invisible to them. Anything unrecognized returns "" and is
  * left to the post-extraction check instead.
  */
+/**
+ * Path/subdomain words that are board furniture, not a company. If a rule yields
+ * one of these it has misread the URL, and returning it would let an unrelated
+ * blacklist entry block every job on that board -- so treat it as "unknown".
+ */
+const NOT_A_COMPANY = new Set(["jobs", "job", "careers", "career", "apply", "postings", "posting", "search", "www", "embed", "en"]);
+
 export function companySlugFromUrl(rawUrl: string | null | undefined): string {
+  const slug = readCompanySlug(rawUrl);
+  return NOT_A_COMPANY.has(slug.toLowerCase()) ? "" : slug;
+}
+
+function readCompanySlug(rawUrl: string | null | undefined): string {
   let u: URL;
   try {
     u = new URL(String(rawUrl ?? ""));
@@ -86,10 +98,15 @@ export function companySlugFromUrl(rawUrl: string | null | undefined): string {
     const ci = segs.indexOf("company");
     return (ci !== -1 ? segs[ci + 1] : segs[0]) ?? "";
   }
-  // careers-page.com and kula.ai also lead with the company, but careers-page
-  // often suffixes it ("5centscdn-careers/job/..."), which must come off or the
-  // key would never equal the plain company name.
-  if (/(^|\.)careers-page\.com$/.test(host)) return (segs[0] ?? "").replace(/[-_](careers|jobs)$/, "");
+  // careers-page.com ships the company two ways: on the path
+  // (www.careers-page.com/<company>/job/...) and as a subdomain
+  // (<company>.careers-page.com/jobs/<id>). Reading only the path turns the
+  // second form into the literal segment "jobs".
+  if (/(^|\.)careers-page\.com$/.test(host)) {
+    if (host !== "careers-page.com") return host.split(".")[0];
+    // The path form often suffixes the company ("5centscdn-careers").
+    return (segs[0] ?? "").replace(/[-_](careers|jobs)$/, "");
+  }
   if (/(^|\.)kula\.ai$/.test(host)) return segs[0] ?? "";
 
   // Subdomain boards: <company>.applytojob.com, <company>.bamboohr.com,

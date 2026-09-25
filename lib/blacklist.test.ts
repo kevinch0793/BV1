@@ -42,7 +42,9 @@ test("companySlugFromUrl reads the company each board carries", () => {
     ["https://confluence.pinpointhq.com/en/postings/c7fe", "confluence"],
     // careers-page suffixes the company on the path; the suffix must come off.
     ["https://careers-page.com/5centscdn-careers/job/987", "5centscdn"],
-    ["https://careers-page.com/nexis-builds/job/L9W443Y6", "nexis-builds"],
+    ["https://www.careers-page.com/alivio-search-partners-2/job/8XY4734R", "alivio-search-partners-2"],
+    // ...and it ALSO ships a subdomain form, where the path is just "jobs".
+    ["https://yoailabs.careers-page.com/jobs/73cf7592-dad8-442b-995d-720", "yoailabs"],
     ["https://careers.kula.ai/phaidra/54052", "phaidra"],
   ];
   for (const [url, expected] of cases) {
@@ -88,6 +90,21 @@ test("parseBlacklist ignores blanks, comments and duplicates", () => {
     list.map((e) => e.label),
     ["Meta", "Google LLC", "Affirm"],
   );
+});
+
+test("board furniture is never treated as a company name", () => {
+  // Regression: <company>.careers-page.com/jobs/<id> was read via the path rule
+  // and yielded "jobs". Had anyone blacklisted a company normalizing to "jobs",
+  // every job on that board would have been excluded.
+  const list = parseBlacklist("Jobs\nCareers");
+  for (const url of [
+    "https://yoailabs.careers-page.com/jobs/73cf7592",
+    "https://careers-page.com/jobs/abc",
+  ]) {
+    const slug = companySlugFromUrl(url);
+    assert.notEqual(slug, "jobs", url);
+    assert.equal(matchBlacklist(slug, list), null, `must not block on furniture: ${url}`);
+  }
 });
 
 test("an empty list matches nothing", () => {
