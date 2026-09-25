@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { findJobDescription } from "@/lib/scrape/fetchHtml";
+import { companySlugFromUrl, matchBlacklist } from "@/lib/blacklist";
+import { getCompanyBlacklist } from "@/lib/settings";
 import { extractJobFields } from "@/lib/llm/service";
 import { assertOwnsProfile, assertOwnsJob } from "@/lib/owner";
 import { isProfilePaused } from "@/lib/pipeline";
@@ -53,7 +55,7 @@ export async function updateJobFields(
 export async function addJobUrls(
   profileId: string,
   formData: FormData,
-): Promise<{ ok: boolean; added: number; skipped: number; error?: string }> {
+): Promise<{ ok: boolean; added: number; skipped: number; excluded?: number; error?: string }> {
   await assertOwnsProfile(profileId);
   if (await isProfilePaused(profileId)) return { ok: false, added: 0, skipped: 0, error: PAUSED_MSG };
   const urls = normalizeUrls(String(formData.get("urls") ?? ""));
@@ -65,13 +67,24 @@ export async function addJobUrls(
   const fresh = urls.filter((u) => !have.has(u));
   const skipped = urls.length - fresh.length;
 
+  // Blacklist, first pass: the company slug most boards carry in the URL. A hit
+  // here never costs a fetch. Boards that hide the company yield no slug and are
+  // caught after extraction instead (see fetchJobNow).
+  const blacklist = await getCompanyBlacklist();
+  let excluded = 0;
   if (fresh.length) {
     await prisma.jobPosting.createMany({
-      data: fresh.map((url) => ({ profileId, url, status: "pending" })),
+      data: fresh.map((url) => {
+        const hit = blacklist.length ? matchBlacklist(companySlugFromUrl(url), blacklist) : null;
+        if (hit) excluded += 1;
+        return hit
+          ? { profileId, url, status: "excluded", error: `Blacklisted company: ${hit.label}` }
+          : { profileId, url, status: "pending" };
+      }),
     });
   }
   revalidatePath(`/profiles/${profileId}/dashboard`);
-  return { ok: true, added: fresh.length, skipped };
+  return { ok: true, added: fresh.length - excluded, skipped, excluded };
 }
 
 /** Scrape + extract a single job. Called one-at-a-time by the queue. */

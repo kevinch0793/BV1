@@ -41,12 +41,16 @@ const STAGE: Record<string, { label: string; style: string }> = {
   // tailored. Terminal — the queue never picks it up again. The JD is stored, so
   // it can still be tailored by hand if the classification was wrong.
   skipped: { label: "Skipped — not remote", style: "bg-neutral-100 text-neutral-500" },
+  // Company is on the admin blacklist. Terminal, like "skipped"; `error` names the
+  // list entry that matched, so a wrong block is explainable rather than a silent
+  // disappearance.
+  excluded: { label: "Excluded — blacklisted", style: "bg-neutral-100 text-neutral-500" },
   failed: { label: "Failed", style: "bg-red-100 text-red-700" },
 };
 
 function stageKey(job: Job): keyof typeof STAGE {
   if (job.tailoredId) return "tailored";
-  if (["fetching", "tailoring", "fetched", "needs_jd", "skipped", "failed"].includes(job.status)) return job.status;
+  if (["fetching", "tailoring", "fetched", "needs_jd", "skipped", "excluded", "failed"].includes(job.status)) return job.status;
   return "pending";
 }
 
@@ -273,6 +277,7 @@ export function PipelineDashboard({
               const parts: string[] = [];
               if (r.added) parts.push(`Added ${r.added}`);
               if (r.skipped) parts.push(`skipped ${r.skipped} duplicate${r.skipped === 1 ? "" : "s"}`);
+              if (r.excluded) parts.push(`excluded ${r.excluded} blacklisted`);
               setAddMsg(parts.length ? `${parts.join(", ")}.` : "No new URLs.");
               if (r.added) await kick();
             });

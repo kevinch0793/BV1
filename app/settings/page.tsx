@@ -1,5 +1,5 @@
-import { getSettings, getGlobalModel, getNoticeDraft, TAILORING_MODELS, NOTICE_KINDS } from "@/lib/settings";
-import { updateSettings, updateTailoringModel, updateSkillsConfig, updateNotice } from "@/app/actions/settings";
+import { getSettings, getGlobalModel, getNoticeDraft, getCompanyBlacklistText, TAILORING_MODELS, NOTICE_KINDS } from "@/lib/settings";
+import { updateSettings, updateTailoringModel, updateSkillsConfig, updateNotice, updateCompanyBlacklist } from "@/app/actions/settings";
 import { requireClient } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { DirtyForm } from "@/components/DirtyForm";
@@ -27,10 +27,11 @@ const saveBtn =
 export default async function SettingsPage() {
   const { id: clientId, role } = await requireClient();
   const isAdmin = role === "admin";
-  const [settings, globalModel, notice, profiles, answerTokens] = await Promise.all([
+  const [settings, globalModel, notice, blacklistText, profiles, answerTokens] = await Promise.all([
     getSettings(clientId),
     getGlobalModel(),
     getNoticeDraft(),
+    getCompanyBlacklistText(),
     prisma.profile.findMany({ where: { clientId }, orderBy: { createdAt: "asc" }, select: { id: true, fullName: true, label: true } }),
     prisma.answerToken.findMany({ where: { clientId }, select: { id: true, profileId: true, createdAt: true, lastUsedAt: true } }),
   ]);
@@ -109,6 +110,34 @@ export default async function SettingsPage() {
               </label>
             </div>
             <button data-save className={saveBtn}>Save notice</button>
+          </DirtyForm>
+        </section>
+      )}
+
+      {/* Company blacklist — admin only. Global: applies to every profile's pastes. */}
+      {isAdmin && (
+        <section className="rounded-xl border border-neutral-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-neutral-900">Company blacklist <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700">Admin</span></h2>
+          <p className="mb-3 text-xs text-neutral-500">
+            Companies this platform never applies to — <strong>one per line</strong>, applied to every profile. Pasted URLs from
+            these companies are excluded automatically: matched first against the job board&apos;s company slug (so they are never
+            even fetched), then again against the company name read off the posting, which catches boards whose URL hides it.
+            Matching ignores case, punctuation and suffixes like &quot;Inc&quot; or &quot;LLC&quot;, and is whole-name only —
+            listing &quot;Meta&quot; will not block &quot;Metabase&quot;. Lines starting with <code>#</code> are comments.
+          </p>
+          <DirtyForm action={updateCompanyBlacklist} className="space-y-3">
+            <label className="flex flex-col gap-1 text-sm font-medium text-neutral-700">
+              Blocked companies
+              <textarea
+                name="companyBlacklist"
+                rows={10}
+                defaultValue={blacklistText}
+                placeholder={"# one company per line\nAcme Corp\nWispr Flow"}
+                className={`${input} font-mono text-xs`}
+                spellCheck={false}
+              />
+            </label>
+            <button data-save className={saveBtn}>Save blacklist</button>
           </DirtyForm>
         </section>
       )}

@@ -7,6 +7,7 @@ import {
   parseSectionOrder,
   setGlobalModel,
   setNotice,
+  setCompanyBlacklist,
   isNoticeKind,
   DEFAULT_NOTICE_KIND,
   TAILORING_MODELS,
@@ -41,6 +42,20 @@ export async function updateNotice(formData: FormData) {
   await setNotice({ text, kind, active: formData.get("noticeActive") === "on" });
   // The banner lives in the root layout, so every route renders it.
   revalidatePath("/", "layout");
+}
+
+/**
+ * Save the global company blacklist — ADMIN ONLY. One list for the whole
+ * platform: every profile's pasted URLs are checked against it, so this is
+ * deliberately not per-client.
+ */
+export async function updateCompanyBlacklist(formData: FormData) {
+  await requireAdmin();
+  // Generous cap: a few thousand companies still parse in well under a
+  // millisecond, and truncating an admin's list silently would be worse.
+  const text = String(formData.get("companyBlacklist") ?? "").slice(0, 100_000);
+  await setCompanyBlacklist(text);
+  revalidatePath("/settings");
 }
 
 export async function updateSkillsConfig(formData: FormData) {

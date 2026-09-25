@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { parseBlacklist, type BlacklistEntry } from "@/lib/blacklist";
 import { parseSectionOrder, type SectionKey } from "@/lib/sections";
 
 export type { SectionKey } from "@/lib/sections";
@@ -137,6 +138,36 @@ export async function setNotice(input: { text: string; kind: NoticeKind; active:
     where: { id: APP_CONFIG_ID },
     create: { id: APP_CONFIG_ID, ...data },
     update: data,
+  });
+}
+
+/**
+ * The admin-maintained company blacklist, as raw text (one company per line).
+ * Never throws: like getNotice(), a missing AppConfig row or column yields ""
+ * (block nothing) rather than taking down job creation.
+ */
+export async function getCompanyBlacklistText(): Promise<string> {
+  try {
+    const cfg = await prisma.appConfig.findUnique({ where: { id: APP_CONFIG_ID } });
+    return cfg?.companyBlacklist ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** The blacklist parsed for matching. Returns [] when nothing is configured. */
+export async function getCompanyBlacklist(): Promise<BlacklistEntry[]> {
+  return parseBlacklist(await getCompanyBlacklistText());
+}
+
+/** Save the blacklist (admin only — the caller must enforce that). Stored as the
+ *  admin typed it, so the editor round-trips comments and ordering unchanged. */
+export async function setCompanyBlacklist(text: string): Promise<void> {
+  const companyBlacklist = text.trim() || null;
+  await prisma.appConfig.upsert({
+    where: { id: APP_CONFIG_ID },
+    create: { id: APP_CONFIG_ID, companyBlacklist },
+    update: { companyBlacklist },
   });
 }
 

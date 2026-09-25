@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/db";
 import { findJobDescription } from "@/lib/scrape/fetchHtml";
+import { matchBlacklist } from "@/lib/blacklist";
 import { extractJobFields, tailorResume, type TailorArgs } from "@/lib/llm/service";
 import { createTailorBatch, waitForBatch, collectTailorResults, listOpenBatchIds, type TailorBatchRequest, type BatchUsage } from "@/lib/llm/batch";
 import { type ResumeContent } from "@/lib/llm/schema";
 import { llmProfileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { extractJdSkills, scoreFit, profileToText, type JdSkills } from "@/lib/llm/ats";
-import { getCustomInstructions, getSettings, getGlobalModel, providerForModel, type SkillsConfig } from "@/lib/settings";
+import { getCustomInstructions, getSettings, getGlobalModel, providerForModel, type SkillsConfig, getCompanyBlacklist } from "@/lib/settings";
 import { pruneOldActivity, pruneStaleIncomplete, activeCutoff } from "@/lib/retention";
 import { withUsage, withKind, recordUsage } from "@/lib/llm/usage";
 import { FairLimiter } from "@/lib/fairLimiter";
@@ -356,6 +357,28 @@ async function fetchJobNow(jobId: string): Promise<boolean> {
     // no tailored resume, so a skipped job is never re-picked on later rounds or
     // after a restart. The JD is still stored, so the row stays searchable and can
     // be tailored by hand from the dashboard if the classification was wrong.
+    // Blacklist, second pass: the company NAME the model read off the posting.
+    // This is what makes an entry written as the real company catch a board whose
+    // URL slug differs (Lever "nextgenfed" vs "NextGen Federal"), and covers the
+    // boards that carry no company in the URL at all. Terminal, like "skipped".
+    const blacklisted = matchBlacklist(fields.company, await getCompanyBlacklist());
+    if (blacklisted) {
+      await prisma.jobPosting.update({
+        where: { id: jobId },
+        data: {
+          company: fields.company,
+          role: fields.role,
+          location: fields.location,
+          workplace: fields.workplace,
+          descriptionRaw: fetched.text.slice(0, 20000),
+          descriptionParsed: { description: fields.description, requirements: fields.requirements, atsSkills: null },
+          status: "excluded",
+          error: `Blacklisted company: ${blacklisted.label}`,
+        },
+      });
+      return false;
+    }
+
     const tailorable = shouldTailorWorkplace(fields.workplace);
 
     // Show the fetched fields ASAP and move on to tailoring. The ATS keyword list
@@ -403,6 +426,17 @@ async function tailorJobNow(jobId: string, opts: PipelineOpts): Promise<boolean>
   // alone — without this check that backlog is tailored regardless of mode.
   if (!shouldTailorWorkplace(job.workplace)) {
     await markSkipped(jobId);
+    return false;
+  }
+
+  // Same reasoning for the blacklist: a job fetched before a company was added to
+  // the list still sits in "fetched", and the queue gathers on status alone.
+  const blocked = matchBlacklist(job.company, await getCompanyBlacklist());
+  if (blocked) {
+    await prisma.jobPosting.update({
+      where: { id: jobId },
+      data: { status: "excluded", error: `Blacklisted company: ${blocked.label}` },
+    });
     return false;
   }
 

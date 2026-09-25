@@ -1,0 +1,82 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import { companySlugFromUrl, matchBlacklist, normalizeCompany, parseBlacklist } from "./blacklist.ts";
+
+// The URLs below are real shapes taken from the job table, so the slug rules are
+// tested against what the boards actually send rather than an idealized form.
+
+test("normalizeCompany reduces a name and its URL slug to the same key", () => {
+  assert.equal(normalizeCompany("Wispr Flow"), normalizeCompany("wispr-flow"));
+  assert.equal(normalizeCompany("Victory Live"), normalizeCompany("victory-live"));
+  assert.equal(normalizeCompany("  PubMatic  "), "pubmatic");
+});
+
+test("normalizeCompany drops legal suffixes but not real name parts", () => {
+  assert.equal(normalizeCompany("Google LLC"), normalizeCompany("Google"));
+  assert.equal(normalizeCompany("Charger Logistics Inc."), "chargerlogistics");
+  // "co" and "group" are legal suffixes only as trailing words.
+  assert.equal(normalizeCompany("Coinbase"), "coinbase");
+  assert.equal(normalizeCompany("Groupon"), "groupon");
+});
+
+test("matching is exact, so a short name cannot swallow a longer one", () => {
+  const list = parseBlacklist("Meta");
+  assert.ok(matchBlacklist("Meta", list), "Meta should match itself");
+  // The reason matching is exact: these are different companies.
+  assert.equal(matchBlacklist("Metabase", list), null);
+  assert.equal(matchBlacklist("Metagenomi", list), null);
+});
+
+test("companySlugFromUrl reads the company each board carries", () => {
+  const cases: [string, string][] = [
+    ["https://job-boards.greenhouse.io/embed/job_app?for=pubmatic&token=5341476008", "pubmatic"],
+    ["https://job-boards.greenhouse.io/embed/job_app?for=beyondtrust&jr_id=abc&token=8161719", "beyondtrust"],
+    ["https://jobs.ashbyhq.com/wispr-flow/a093f7f3-d472-4f5e-bf88-96493915960a/application", "wispr-flow"],
+    ["https://jobs.lever.co/nextgenfed/c14f66a4-f978-40c2-a3b7-a69669722437/apply", "nextgenfed"],
+    ["https://jobs.smartrecruiters.com/oneclick-ui/company/prosidianconsulting/publication/ad5d5ffb", "prosidianconsulting"],
+    ["https://prometheusfederalservices.applytojob.com/apply/OHKh8LG7pL/Senior-Data-Scientist", "prometheusfederalservices"],
+    ["https://jorieai.bamboohr.com/careers/151", "jorieai"],
+  ];
+  for (const [url, expected] of cases) {
+    assert.equal(companySlugFromUrl(url), expected, url);
+  }
+});
+
+test("a board that hides the company yields no slug rather than a guess", () => {
+  // JobDiva portals are an opaque token; guessing here would block jobs the
+  // admin never listed, so these fall through to the post-extraction check.
+  assert.equal(companySlugFromUrl("https://www1.jobdiva.com/portal/?a=svjdnwzkulao5hqo7t0ifgvj8s71sf01"), "");
+  assert.equal(companySlugFromUrl("not a url"), "");
+  assert.equal(companySlugFromUrl(""), "");
+  assert.equal(companySlugFromUrl(null), "");
+});
+
+test("a URL slug blocks a pasted job before it is ever fetched", () => {
+  const list = parseBlacklist("Wispr Flow\nPubMatic");
+  const url = "https://jobs.ashbyhq.com/wispr-flow/a093f7f3-d472-4f5e-bf88-96493915960a/application";
+  const hit = matchBlacklist(companySlugFromUrl(url), list);
+  assert.equal(hit?.label, "Wispr Flow");
+});
+
+test("a slug that differs from the name is caught later by the extracted name", () => {
+  // Lever's slug is "nextgenfed" but the company is "NextGen Federal" -- exactly
+  // why the post-extraction layer exists.
+  const list = parseBlacklist("NextGen Federal");
+  const url = "https://jobs.lever.co/nextgenfed/c14f66a4-f978-40c2-a3b7-a69669722437/apply";
+  assert.equal(matchBlacklist(companySlugFromUrl(url), list), null, "slug alone cannot match");
+  assert.ok(matchBlacklist("NextGen Federal", list), "the extracted name does");
+});
+
+test("parseBlacklist ignores blanks, comments and duplicates", () => {
+  const list = parseBlacklist("Meta\n\n  \n# agencies below\nGoogle LLC\ngoogle\n#\nAffirm");
+  assert.deepEqual(
+    list.map((e) => e.label),
+    ["Meta", "Google LLC", "Affirm"],
+  );
+});
+
+test("an empty list matches nothing", () => {
+  assert.deepEqual(parseBlacklist(""), []);
+  assert.equal(matchBlacklist("Anything", parseBlacklist("")), null);
+});

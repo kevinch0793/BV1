@@ -111,6 +111,10 @@ model AppConfig {
   noticeKind      String    @default("info") // info | success | warning | critical
   noticeActive    Boolean   @default(false)
   noticeUpdatedAt DateTime?
+  // Companies this platform never applies to, one per line ("#" starts a comment).
+  // Matched when URLs are pasted (against the board's company slug) and again
+  // after extraction (against the real company name) -- see lib/blacklist.ts.
+  companyBlacklist String?
   updatedAt      DateTime @updatedAt
 }
 
@@ -198,7 +202,7 @@ model JobPosting {
   workplace         String? // remote | hybrid | in-person | onsite | unknown (LLM-classified; "unknown" = the posting stated no mode, which is tailored rather than skipped)
   descriptionRaw    String?
   descriptionParsed Json? // { description, requirements[] }
-  // pending | fetching | fetched | needs_jd | tailoring | skipped | failed
+  // pending | fetching | fetched | needs_jd | tailoring | skipped | excluded | failed
   // "skipped" is terminal: fetched successfully but not fully remote, so the
   // pipeline deliberately did not tailor it (see shouldTailorWorkplace).
   status            String   @default("pending")
