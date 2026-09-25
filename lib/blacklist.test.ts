@@ -37,6 +37,13 @@ test("companySlugFromUrl reads the company each board carries", () => {
     ["https://jobs.smartrecruiters.com/oneclick-ui/company/prosidianconsulting/publication/ad5d5ffb", "prosidianconsulting"],
     ["https://prometheusfederalservices.applytojob.com/apply/OHKh8LG7pL/Senior-Data-Scientist", "prometheusfederalservices"],
     ["https://jorieai.bamboohr.com/careers/151", "jorieai"],
+    ["https://timberlinegrp.catsone.com/careers/7276/jobs/1", "timberlinegrp"],
+    ["https://pulserisetechnologies.freshteam.com/jobs/7", "pulserisetechnologies"],
+    ["https://confluence.pinpointhq.com/en/postings/c7fe", "confluence"],
+    // careers-page suffixes the company on the path; the suffix must come off.
+    ["https://careers-page.com/5centscdn-careers/job/987", "5centscdn"],
+    ["https://careers-page.com/nexis-builds/job/L9W443Y6", "nexis-builds"],
+    ["https://careers.kula.ai/phaidra/54052", "phaidra"],
   ];
   for (const [url, expected] of cases) {
     assert.equal(companySlugFromUrl(url), expected, url);
@@ -44,9 +51,16 @@ test("companySlugFromUrl reads the company each board carries", () => {
 });
 
 test("a board that hides the company yields no slug rather than a guess", () => {
-  // JobDiva portals are an opaque token; guessing here would block jobs the
-  // admin never listed, so these fall through to the post-extraction check.
-  assert.equal(companySlugFromUrl("https://www1.jobdiva.com/portal/?a=svjdnwzkulao5hqo7t0ifgvj8s71sf01"), "");
+  // These carry an opaque id, not a company. Guessing would block jobs the admin
+  // never listed; returning "" instead routes them to the "unverified" bucket in
+  // the paste filter, and to the post-extraction check once the page is read.
+  const opaque = [
+    "https://www1.jobdiva.com/portal/?a=svjdnwzkulao5hqo7t0ifgvj8s71sf01",
+    "https://recruiting.paylocity.com/Recruiting/Jobs/Details/4501753",
+    "https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/jobsearch/job/337042",
+    "https://recruiterflow.com/HR/jobs/725",
+  ];
+  for (const url of opaque) assert.equal(companySlugFromUrl(url), "", url);
   assert.equal(companySlugFromUrl("not a url"), "");
   assert.equal(companySlugFromUrl(""), "");
   assert.equal(companySlugFromUrl(null), "");

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addJobUrls, setJobFromText, deleteJob, deleteJobs, setApplyStatus, updateJobFields, type ApplyStatus } from "@/app/actions/jobs";
+import { addJobUrls, filterJobUrls, setJobFromText, deleteJob, deleteJobs, setApplyStatus, updateJobFields, type ApplyStatus, type FilteredOut } from "@/app/actions/jobs";
 import { startPipeline, jobStatuses, ensurePipelineRunning, retryJob, retryJobs, type LiveJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResumeNative } from "@/lib/exportClient";
@@ -107,6 +107,16 @@ export function PipelineDashboard({
   jobIdsRef.current = jobs.map((j) => j.id);
   const [adding, startAdd] = useTransition();
   const [addMsg, setAddMsg] = useState<string | null>(null);
+  // Filter runs before adding: until it has, we don't know which URLs are
+  // blacklisted, duplicated or unusable, so "Add & run" stays disabled.
+  const [filtering, startFilter] = useTransition();
+  const [filtered, setFiltered] = useState<{ passed: string[]; unverified: string[]; removed: FilteredOut[] } | null>(null);
+  // Unverified URLs come from boards that hide the company, so the blacklist
+  // could not be applied to them. Included by default — excluding them would
+  // silently drop roughly a fifth of a typical paste — but the post-extraction
+  // check still blocks any that turn out to be blacklisted.
+  const [includeUnverified, setIncludeUnverified] = useState(true);
+  const urlsRef = useRef<HTMLTextAreaElement>(null);
   // Row selection for bulk "Retry fetch".
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [retrying, setRetrying] = useState(false);
@@ -263,11 +273,19 @@ export function PipelineDashboard({
       <section className="rounded-xl border border-neutral-200 bg-white p-5">
         <h2 className="text-lg font-semibold text-neutral-900">Add job URLs</h2>
         <p className="mb-3 text-xs text-neutral-500">
-          One URL per line. On add, each is fetched and tailored automatically — it keeps running in the background even if you leave this page.
+          One URL per line. <strong>Filter</strong> first — it drops blacklisted companies, URLs already on this profile and
+          unusable lines, and shows what survived so you can copy it. Then <strong>Add &amp; run</strong> fetches and tailors each
+          one in the background, even if you leave this page.
         </p>
         <form
           action={(fd) => {
             setAddMsg(null);
+            // Submit exactly what Filter produced, not whatever the box shows —
+            // the unverified group is opt-out and lives outside the textarea.
+            if (filtered) {
+              const chosen = [...filtered.passed, ...(includeUnverified ? filtered.unverified : [])];
+              fd.set("urls", chosen.join("\n"));
+            }
             startAdd(async () => {
               const r = await addJobUrls(profileId, fd);
               if (!r.ok) {
@@ -279,16 +297,74 @@ export function PipelineDashboard({
               if (r.skipped) parts.push(`skipped ${r.skipped} duplicate${r.skipped === 1 ? "" : "s"}`);
               if (r.excluded) parts.push(`excluded ${r.excluded} blacklisted`);
               setAddMsg(parts.length ? `${parts.join(", ")}.` : "No new URLs.");
+              // Added — release the box for the next batch.
+              setFiltered(null);
+              if (urlsRef.current) urlsRef.current.value = "";
               if (r.added) await kick();
             });
           }}
           className="space-y-2"
         >
-          <textarea name="urls" rows={3} className={input} placeholder={"https://…/job/1\nhttps://…/job/2"} />
+          <textarea
+            ref={urlsRef}
+            name="urls"
+            rows={filtered ? 6 : 3}
+            readOnly={!!filtered}
+            className={`${input} ${filtered ? "bg-neutral-50 text-neutral-700" : ""}`}
+            placeholder={"https://…/job/1\nhttps://…/job/2"}
+          />
+          {filtered && (
+            <FilterResult
+              result={filtered}
+              includeUnverified={includeUnverified}
+              onToggleUnverified={setIncludeUnverified}
+            />
+          )}
           <div className="flex flex-wrap items-center gap-3">
-            <button disabled={adding} className="rounded-md bg-sky-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-800 disabled:opacity-50">
+            <button
+              type="button"
+              disabled={filtering || adding}
+              onClick={() => {
+                setAddMsg(null);
+                const fd = new FormData();
+                fd.set("urls", urlsRef.current?.value ?? "");
+                startFilter(async () => {
+                  const r = await filterJobUrls(profileId, fd);
+                  if (!r.ok) {
+                    setAddMsg(r.error ?? "Filter failed");
+                    return;
+                  }
+                  setFiltered({ passed: r.passed, unverified: r.unverified, removed: r.removed });
+                  // The box becomes the copyable result: only what passed.
+                  if (urlsRef.current) urlsRef.current.value = r.passed.join("\n");
+                });
+              }}
+              className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+            >
+              {filtering ? "Filtering…" : "Filter"}
+            </button>
+            <button
+              disabled={adding || !filtered || (filtered.passed.length === 0 && !(includeUnverified && filtered.unverified.length))}
+              title={filtered ? undefined : "Run Filter first"}
+              className="rounded-md bg-sky-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-800 disabled:opacity-50"
+            >
               {adding ? "Adding…" : "Add & run"}
             </button>
+            {filtered && (
+              <button
+                type="button"
+                disabled={adding}
+                onClick={() => {
+                  setFiltered(null);
+                  setAddMsg(null);
+                  setIncludeUnverified(true);
+                  if (urlsRef.current) urlsRef.current.value = "";
+                }}
+                className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                Clear
+              </button>
+            )}
             {polling && (
               <span className="inline-flex items-center gap-2 text-sm text-sky-700">
                 <Spinner /> Working in background…
@@ -683,6 +759,66 @@ function EditableField({ value, onSave }: { value: string | null; onSave: (v: st
       {value ? value : <span className="text-neutral-400">—</span>}
       {saving && <span className="ml-1 align-middle text-[10px] font-normal text-neutral-400">saving…</span>}
     </button>
+  );
+}
+
+/**
+ * What Filter produced. The main textarea already holds the passed URLs (so the
+ * clean list is copyable exactly where it was pasted); this renders the other two
+ * groups underneath, each in its own read-only box so they can be copied too.
+ */
+function FilterResult({
+  result,
+  includeUnverified,
+  onToggleUnverified,
+}: {
+  result: { passed: string[]; unverified: string[]; removed: FilteredOut[] };
+  includeUnverified: boolean;
+  onToggleUnverified: (v: boolean) => void;
+}) {
+  const { passed, unverified, removed } = result;
+  const box = "w-full rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 font-mono text-[11px] text-neutral-600";
+  return (
+    <div className="space-y-3 rounded-lg border border-neutral-200 bg-neutral-50/60 p-3">
+      <p className="text-xs text-neutral-600">
+        <strong className="text-neutral-800">{passed.length} passed</strong>
+        {unverified.length > 0 && <> · {unverified.length} unverified</>}
+        {removed.length > 0 && <> · {removed.length} removed</>}
+        {passed.length === 0 && unverified.length === 0 && " — nothing left to add."}
+      </p>
+
+      {unverified.length > 0 && (
+        <div>
+          <label className="mb-1 flex items-center gap-2 text-xs font-medium text-neutral-700">
+            <input
+              type="checkbox"
+              checked={includeUnverified}
+              onChange={(e) => onToggleUnverified(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-neutral-300"
+            />
+            Include {unverified.length} unverified
+          </label>
+          <p className="mb-1 text-[11px] text-neutral-500">
+            These boards don&apos;t put the company in the URL, so the blacklist couldn&apos;t be checked yet. If one turns out to
+            be blacklisted it is still excluded after its page is read — but this list is not a guarantee, unlike the box above.
+          </p>
+          <textarea readOnly rows={Math.min(5, unverified.length)} value={unverified.join("\n")} className={box} spellCheck={false} />
+        </div>
+      )}
+
+      {removed.length > 0 && (
+        <div>
+          <p className="mb-1 text-xs font-medium text-neutral-700">{removed.length} removed</p>
+          <textarea
+            readOnly
+            rows={Math.min(6, removed.length)}
+            value={removed.map((r) => `${r.url}    # ${r.reason}`).join("\n")}
+            className={box}
+            spellCheck={false}
+          />
+        </div>
+      )}
+    </div>
   );
 }
 

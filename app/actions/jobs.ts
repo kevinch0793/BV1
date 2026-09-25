@@ -50,6 +50,66 @@ export async function updateJobFields(
   return { ok: true };
 }
 
+/** One URL that will not be added, and why. */
+export type FilteredOut = { url: string; reason: string };
+
+/**
+ * Dry-run the paste: sort URLs into what will be added, what cannot be checked,
+ * and what is rejected — WITHOUT touching the database.
+ *
+ * Three buckets rather than two, because the blacklist can only be applied here
+ * to the company slug a board puts in its URL, and roughly a fifth of boards
+ * carry none (paylocity, Oracle HCM, recruiterflow, jobdiva, plus a long tail).
+ * Those are "unverified", not "clean": dropping them would discard good jobs,
+ * and silently passing them would make the exported list look like a guarantee
+ * it isn't. Anything unverified that IS blacklisted still gets caught after
+ * extraction, when the real company name is known.
+ */
+export async function filterJobUrls(
+  profileId: string,
+  formData: FormData,
+): Promise<{ ok: boolean; passed: string[]; unverified: string[]; removed: FilteredOut[]; error?: string }> {
+  await assertOwnsProfile(profileId);
+  const empty = { passed: [], unverified: [], removed: [] };
+  const raw = String(formData.get("urls") ?? "");
+  const urls = normalizeUrls(raw);
+
+  // Lines that carry text but yield no usable URL — a stray note, or a row that
+  // lost its link on the way out of a spreadsheet. Reported rather than dropped
+  // silently, so a mangled paste is visible instead of quietly short.
+  const removed: FilteredOut[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t || /https?:\/\//i.test(t) || normalizeUrl(t)) continue;
+    removed.push({ url: t.slice(0, 300), reason: "not a URL" });
+  }
+  if (urls.length === 0 && removed.length === 0) {
+    return { ok: false, ...empty, error: "Enter at least one URL." };
+  }
+
+  const existing = await prisma.jobPosting.findMany({ where: { profileId }, select: { url: true } });
+  const have = new Set(existing.map((e) => normalizeUrl(e.url)).filter((u): u is string => !!u));
+  const blacklist = await getCompanyBlacklist();
+
+  const passed: string[] = [];
+  const unverified: string[] = [];
+  for (const url of urls) {
+    if (have.has(url)) {
+      removed.push({ url, reason: "already on this profile" });
+      continue;
+    }
+    const slug = companySlugFromUrl(url);
+    if (!slug) {
+      unverified.push(url); // board hides the company — decided after extraction
+      continue;
+    }
+    const hit = matchBlacklist(slug, blacklist);
+    if (hit) removed.push({ url, reason: `blacklisted: ${hit.label}` });
+    else passed.push(url);
+  }
+  return { ok: true, passed, unverified, removed };
+}
+
 /** Bulk-add job URLs as pending entries (no scraping yet). Duplicates — within
  *  the batch or already on this profile — are skipped, not re-added. */
 export async function addJobUrls(

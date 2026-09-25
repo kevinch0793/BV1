@@ -86,8 +86,15 @@ export function companySlugFromUrl(rawUrl: string | null | undefined): string {
     const ci = segs.indexOf("company");
     return (ci !== -1 ? segs[ci + 1] : segs[0]) ?? "";
   }
+  // careers-page.com and kula.ai also lead with the company, but careers-page
+  // often suffixes it ("5centscdn-careers/job/..."), which must come off or the
+  // key would never equal the plain company name.
+  if (/(^|\.)careers-page\.com$/.test(host)) return (segs[0] ?? "").replace(/[-_](careers|jobs)$/, "");
+  if (/(^|\.)kula\.ai$/.test(host)) return segs[0] ?? "";
+
   // Subdomain boards: <company>.applytojob.com, <company>.bamboohr.com,
-  // <company>.wd1.myworkdayjobs.com, careers-<company>.icims.com.
+  // <company>.wd1.myworkdayjobs.com, careers-<company>.icims.com,
+  // <company>.catsone.com, <company>.freshteam.com, <company>.pinpointhq.com.
   const sub = (suffix: RegExp): string => {
     if (!suffix.test(host)) return "";
     const first = host.split(".")[0];
@@ -98,6 +105,9 @@ export function companySlugFromUrl(rawUrl: string | null | undefined): string {
     sub(/\.bamboohr\.com$/) ||
     sub(/\.myworkdayjobs\.com$/) ||
     sub(/\.icims\.com$/) ||
+    sub(/\.catsone\.com$/) ||
+    sub(/\.freshteam\.com$/) ||
+    sub(/\.pinpointhq\.com$/) ||
     ""
   );
 }
