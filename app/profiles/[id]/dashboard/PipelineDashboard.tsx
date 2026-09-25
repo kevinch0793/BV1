@@ -282,10 +282,7 @@ export function PipelineDashboard({
             setAddMsg(null);
             // Submit exactly what Filter produced, not whatever the box shows —
             // the unverified group is opt-out and lives outside the textarea.
-            if (filtered) {
-              const chosen = [...filtered.passed, ...(includeUnverified ? filtered.unverified : [])];
-              fd.set("urls", chosen.join("\n"));
-            }
+            if (filtered) fd.set("urls", urlsToAdd(filtered, includeUnverified).join("\n"));
             startAdd(async () => {
               const r = await addJobUrls(profileId, fd);
               if (!r.ok) {
@@ -317,7 +314,11 @@ export function PipelineDashboard({
             <FilterResult
               result={filtered}
               includeUnverified={includeUnverified}
-              onToggleUnverified={setIncludeUnverified}
+              onToggleUnverified={(v) => {
+                setIncludeUnverified(v);
+                // Keep the box equal to what will actually be submitted.
+                if (urlsRef.current) urlsRef.current.value = urlsToAdd(filtered, v).join("\n");
+              }}
             />
           )}
           <div className="flex flex-wrap items-center gap-3">
@@ -334,9 +335,11 @@ export function PipelineDashboard({
                     setAddMsg(r.error ?? "Filter failed");
                     return;
                   }
-                  setFiltered({ passed: r.passed, unverified: r.unverified, removed: r.removed });
-                  // The box becomes the copyable result: only what passed.
-                  if (urlsRef.current) urlsRef.current.value = r.passed.join("\n");
+                  const next = { passed: r.passed, unverified: r.unverified, removed: r.removed };
+                  setFiltered(next);
+                  // The box becomes the result: exactly the URLs "Add & run" will
+                  // submit, so it doubles as the clean list to copy elsewhere.
+                  if (urlsRef.current) urlsRef.current.value = urlsToAdd(next, includeUnverified).join("\n");
                 });
               }}
               className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
@@ -344,7 +347,7 @@ export function PipelineDashboard({
               {filtering ? "Filtering…" : "Filter"}
             </button>
             <button
-              disabled={adding || !filtered || (filtered.passed.length === 0 && !(includeUnverified && filtered.unverified.length))}
+              disabled={adding || !filtered || urlsToAdd(filtered, includeUnverified).length === 0}
               title={filtered ? undefined : "Run Filter first"}
               className="rounded-md bg-sky-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-800 disabled:opacity-50"
             >
@@ -762,10 +765,22 @@ function EditableField({ value, onSave }: { value: string | null; onSave: (v: st
   );
 }
 
+/** The URLs "Add & run" submits: everything that passed, plus the unverified
+ *  group unless it has been switched off. */
+function urlsToAdd(
+  r: { passed: string[]; unverified: string[] },
+  includeUnverified: boolean,
+): string[] {
+  return includeUnverified ? [...r.passed, ...r.unverified] : r.passed;
+}
+
 /**
- * What Filter produced. The main textarea already holds the passed URLs (so the
- * clean list is copyable exactly where it was pasted); this renders the other two
- * groups underneath, each in its own read-only box so they can be copied too.
+ * One summary line under the box. The textarea itself holds exactly the URLs
+ * that "Add & run" will submit, so it stays a clean copyable list; everything
+ * else is reported as counts rather than more boxes.
+ *
+ * Removals are grouped by reason instead of listed, because the list can run to
+ * dozens of lines on a big paste and the count is what actually gets read.
  */
 function FilterResult({
   result,
@@ -777,48 +792,37 @@ function FilterResult({
   onToggleUnverified: (v: boolean) => void;
 }) {
   const { passed, unverified, removed } = result;
-  const box = "w-full rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 font-mono text-[11px] text-neutral-600";
-  return (
-    <div className="space-y-3 rounded-lg border border-neutral-200 bg-neutral-50/60 p-3">
-      <p className="text-xs text-neutral-600">
-        <strong className="text-neutral-800">{passed.length} passed</strong>
-        {unverified.length > 0 && <> · {unverified.length} unverified</>}
-        {removed.length > 0 && <> · {removed.length} removed</>}
-        {passed.length === 0 && unverified.length === 0 && " — nothing left to add."}
-      </p>
+  const willAdd = passed.length + (includeUnverified ? unverified.length : 0);
+  // "blacklisted: Meta" and "blacklisted: Acme" collapse to one "blacklisted" tally.
+  const byReason = new Map<string, number>();
+  for (const r of removed) {
+    const key = r.reason.split(":")[0];
+    byReason.set(key, (byReason.get(key) ?? 0) + 1);
+  }
+  const reasons = [...byReason.entries()].map(([k, n]) => `${n} ${k}`).join(", ");
 
+  return (
+    <p className="text-xs text-neutral-600">
+      <strong className="text-neutral-800">{willAdd} to add</strong>
+      {removed.length > 0 && <> · removed {reasons}</>}
+      {willAdd === 0 && <> — nothing left to add.</>}
       {unverified.length > 0 && (
-        <div>
-          <label className="mb-1 flex items-center gap-2 text-xs font-medium text-neutral-700">
+        <>
+          {" · "}
+          <label className="inline-flex items-center gap-1.5">
             <input
               type="checkbox"
               checked={includeUnverified}
               onChange={(e) => onToggleUnverified(e.target.checked)}
               className="h-3.5 w-3.5 rounded border-neutral-300"
             />
-            Include {unverified.length} unverified
+            <span title="These boards don't put the company in the URL, so the blacklist couldn't be applied yet. Any that turn out to be blacklisted are still excluded once the page is read.">
+              include {unverified.length} unverified
+            </span>
           </label>
-          <p className="mb-1 text-[11px] text-neutral-500">
-            These boards don&apos;t put the company in the URL, so the blacklist couldn&apos;t be checked yet. If one turns out to
-            be blacklisted it is still excluded after its page is read — but this list is not a guarantee, unlike the box above.
-          </p>
-          <textarea readOnly rows={Math.min(5, unverified.length)} value={unverified.join("\n")} className={box} spellCheck={false} />
-        </div>
+        </>
       )}
-
-      {removed.length > 0 && (
-        <div>
-          <p className="mb-1 text-xs font-medium text-neutral-700">{removed.length} removed</p>
-          <textarea
-            readOnly
-            rows={Math.min(6, removed.length)}
-            value={removed.map((r) => `${r.url}    # ${r.reason}`).join("\n")}
-            className={box}
-            spellCheck={false}
-          />
-        </div>
-      )}
-    </div>
+    </p>
   );
 }
 
