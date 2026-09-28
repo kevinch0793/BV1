@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { DirtyForm } from "@/components/DirtyForm";
 import { SectionOrderEditor } from "@/components/SectionOrderEditor";
 import { ApiTokenPanel } from "@/components/ApiTokenPanel";
+import { BlacklistEditor } from "@/components/BlacklistEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -126,17 +127,7 @@ export default async function SettingsPage() {
             listing &quot;Meta&quot; will not block &quot;Metabase&quot;. Lines starting with <code>#</code> are comments.
           </p>
           <DirtyForm action={updateCompanyBlacklist} className="space-y-3">
-            <label className="flex flex-col gap-1 text-sm font-medium text-neutral-700">
-              Blocked companies
-              <textarea
-                name="companyBlacklist"
-                rows={10}
-                defaultValue={blacklistText}
-                placeholder={"# one company per line\nAcme Corp\nWispr Flow"}
-                className={`${input} font-mono text-xs`}
-                spellCheck={false}
-              />
-            </label>
+            <BlacklistEditor defaultValue={blacklistText} />
             <button data-save className={saveBtn}>Save blacklist</button>
           </DirtyForm>
         </section>

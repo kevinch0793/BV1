@@ -107,6 +107,22 @@ test("board furniture is never treated as a company name", () => {
   }
 });
 
+test("a differently-spelled query finds the entry already in the list", () => {
+  // What the Settings search box relies on: the admin types the company however
+  // they think of it, and it must find the existing entry rather than report
+  // "not in the list" and invite a duplicate.
+  const list = parseBlacklist("Google\nCharger Logistics Inc.\nWispr Flow");
+  for (const [query, expected] of [
+    ["google llc", "Google"],
+    ["  GOOGLE  ", "Google"],
+    ["charger logistics", "Charger Logistics Inc."],
+    ["wispr-flow", "Wispr Flow"],
+  ] as const) {
+    assert.equal(matchBlacklist(query, list)?.label, expected, query);
+  }
+  assert.equal(matchBlacklist("Googly", list), null, "a different company is not a match");
+});
+
 test("an empty list matches nothing", () => {
   assert.deepEqual(parseBlacklist(""), []);
   assert.equal(matchBlacklist("Anything", parseBlacklist("")), null);
