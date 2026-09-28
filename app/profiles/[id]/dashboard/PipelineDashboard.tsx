@@ -112,10 +112,11 @@ export function PipelineDashboard({
   const [filtering, startFilter] = useTransition();
   const [filtered, setFiltered] = useState<{ passed: string[]; unverified: string[]; removed: FilteredOut[] } | null>(null);
   // Unverified URLs come from boards that hide the company, so the blacklist
-  // could not be applied to them. Included by default — excluding them would
-  // silently drop roughly a fifth of a typical paste — but the post-extraction
-  // check still blocks any that turn out to be blacklisted.
-  const [includeUnverified, setIncludeUnverified] = useState(true);
+  // could NOT be applied to them. Excluded by default, because the box doubles
+  // as a list to copy elsewhere and a copied list that quietly contains
+  // unchecked companies is worse than a short one. Adding them is one click, and
+  // the post-extraction check still blocks any that turn out to be blacklisted.
+  const [includeUnverified, setIncludeUnverified] = useState(false);
   const urlsRef = useRef<HTMLTextAreaElement>(null);
   // Row selection for bulk "Retry fetch".
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -360,7 +361,7 @@ export function PipelineDashboard({
                 onClick={() => {
                   setFiltered(null);
                   setAddMsg(null);
-                  setIncludeUnverified(true);
+                  setIncludeUnverified(false);
                   if (urlsRef.current) urlsRef.current.value = "";
                 }}
                 className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
@@ -804,6 +805,12 @@ function FilterResult({
   return (
     <p className="text-xs text-neutral-600">
       <strong className="text-neutral-800">{willAdd} to add</strong>
+      {/* Say it in the count itself, not just on the checkbox: with these
+          included the list is no longer "checked against the blacklist", and
+          that has to be visible at a glance when it is copied elsewhere. */}
+      {includeUnverified && unverified.length > 0 && (
+        <span className="font-medium text-amber-700"> — includes {unverified.length} NOT company-checked</span>
+      )}
       {removed.length > 0 && <> · removed {reasons}</>}
       {willAdd === 0 && <> — nothing left to add.</>}
       {unverified.length > 0 && (
@@ -816,11 +823,14 @@ function FilterResult({
               onChange={(e) => onToggleUnverified(e.target.checked)}
               className="h-3.5 w-3.5 rounded border-neutral-300"
             />
-            <span title="These boards don't put the company in the URL, so the blacklist couldn't be applied yet. Any that turn out to be blacklisted are still excluded once the page is read.">
-              include {unverified.length} unverified
+            <span title="These boards don't put the company in the URL, so the blacklist could not be applied to them. Any that turn out to be blacklisted are still excluded once the page is read — but until then this list is not a guarantee.">
+              also add {unverified.length} not company-checked
             </span>
           </label>
         </>
+      )}
+      {!includeUnverified && unverified.length > 0 && (
+        <span className="text-neutral-500"> (held back, blacklist not applicable)</span>
       )}
     </p>
   );
