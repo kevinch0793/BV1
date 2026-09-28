@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { planAllowsTailoring } from "@/lib/plan";
 import { llmProfileInclude, toProfileForLLM } from "@/lib/profile-data";
 import { tailorResume } from "@/lib/llm/service";
 import { computeFit, profileToText } from "@/lib/llm/ats";
@@ -16,6 +17,9 @@ export type TailorResult =
   | { ok: true; content: ResumeContent }
   | { ok: false; error: string };
 
+const NOT_ON_TAILOR_PLAN =
+  "This profile is on the Normal plan — jobs are tracked but not tailored. Switch it to the Tailor plan to generate resumes.";
+
 export async function generateTailored(args: {
   profileId: string;
   jobId?: string;
@@ -28,6 +32,12 @@ export async function generateTailored(args: {
     include: llmProfileInclude,
   });
   if (!profile) return { ok: false, error: "Profile not found." };
+  // A "normal" profile is fetched but never tailored. Enforced HERE as well as in
+  // the pipeline queue, because this path is reachable straight from the UI and
+  // is where the spend happens.
+  if (!planAllowsTailoring(profile.plan)) {
+    return { ok: false, error: NOT_ON_TAILOR_PLAN };
+  }
 
   let job: JobForLLM = {};
   if (args.jobId) {
@@ -161,6 +171,12 @@ export async function autoTailorJob(
     include: llmProfileInclude,
   });
   if (!profile) return { ok: false, error: "Profile not found." };
+  // A "normal" profile is fetched but never tailored. Enforced HERE as well as in
+  // the pipeline queue, because this path is reachable straight from the UI and
+  // is where the spend happens.
+  if (!planAllowsTailoring(profile.plan)) {
+    return { ok: false, error: NOT_ON_TAILOR_PLAN };
+  }
 
   const mode: "with_base" | "from_scratch" = profile.baseResume ? "with_base" : "from_scratch";
   if (mode === "from_scratch" && profile.experiences.length === 0) {

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { findJobDescription } from "@/lib/scrape/fetchHtml";
 import { matchBlacklist } from "@/lib/blacklist";
+import { canTailorProfile } from "@/lib/plan";
 import { extractJobFields, tailorResume, type TailorArgs } from "@/lib/llm/service";
 import { createTailorBatch, waitForBatch, collectTailorResults, listOpenBatchIds, type TailorBatchRequest, type BatchUsage } from "@/lib/llm/batch";
 import { type ResumeContent } from "@/lib/llm/schema";
@@ -221,7 +222,15 @@ async function loop(profileId: string): Promise<void> {
     where: { id: profileId },
     include: { baseResume: { select: { id: true } }, _count: { select: { experiences: true } } },
   });
-  const canTailor = !!profile && (!!profile.baseResume || profile._count.experiences > 0);
+  // Plan first, then data: a "normal" profile is fetched but never tailored, so
+  // the queue below gathers only "pending" rows and the tailor call is never made.
+  const canTailor =
+    !!profile &&
+    canTailorProfile({
+      plan: profile.plan,
+      hasBaseResume: !!profile.baseResume,
+      experienceCount: profile._count.experiences,
+    });
 
   const opts = running.get(profileId) ?? {};
   // Batch tailoring goes through the Anthropic Batch API, so it only applies to

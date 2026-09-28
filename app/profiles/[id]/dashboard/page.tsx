@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { canTailorProfile } from "@/lib/plan";
 import { prisma } from "@/lib/db";
 import { profileWhere } from "@/lib/owner";
 import { appDayRange, currentAppDayKey, isValidDayKey } from "@/lib/appday";
@@ -40,7 +41,11 @@ export default async function ProfileDashboard({
   const tailoredByJob = new Map<string, { id: string; fitAfter: number | null }>();
   for (const t of profile.tailored) if (t.jobPostingId) tailoredByJob.set(t.jobPostingId, { id: t.id, fitAfter: t.fitAfter });
 
-  const canTailor = !!profile.baseResume || profile._count.experiences > 0;
+  const canTailor = canTailorProfile({
+    plan: profile.plan,
+    hasBaseResume: !!profile.baseResume,
+    experienceCount: profile._count.experiences,
+  });
 
   const jobs = profile.jobs.map((j) => ({
     id: j.id,

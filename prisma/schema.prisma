@@ -18,6 +18,11 @@ model Client {
   passwordHash String
   role         String    @default("client") // "admin" | "client"
   status       String    @default("pending") // "pending" | "approved" | "rejected"
+  // The plan NEW profiles of this client inherit. The plan itself lives on the
+  // profile (a client may run one candidate per plan), but approval happens at
+  // the client level and usually before any profile exists — so the admin picks
+  // the default here when approving.
+  defaultPlan  String    @default("tailor") // "normal" | "tailor"
   createdAt    DateTime  @default(now())
   approvedAt   DateTime?
 
@@ -134,6 +139,10 @@ model Profile {
   resumeFont   String? // per-profile font family id; null = default
   resumeAccent String? // per-profile accent color id; null = default
   paused    Boolean  @default(false) // admin pause: stops this profile's fetch+tailor pipeline and blocks add/refetch
+  // "tailor" = jobs are fetched AND tailored. "normal" = fetched only, so the
+  // candidate applies with one fixed resume and the expensive tailor call is
+  // never made. Defaults to "tailor", so existing profiles are unaffected.
+  plan      String   @default("tailor") // "normal" | "tailor"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
