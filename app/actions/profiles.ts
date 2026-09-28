@@ -8,6 +8,7 @@ import { requireClient } from "@/lib/auth";
 import { assertOwnsProfile } from "@/lib/owner";
 import { isTemplateAllowed, DEFAULT_TEMPLATE, RESUME_FONTS, ACCENT_COLORS } from "@/components/templates";
 import { checkFixedResume } from "@/lib/fixedResume";
+import { planOf } from "@/lib/plan";
 
 const str = (v: FormDataEntryValue | null) => String(v ?? "").trim();
 const orNull = (v: FormDataEntryValue | null) => str(v) || null;
@@ -38,11 +39,15 @@ function parseProjects(v: FormDataEntryValue | null): ProjectGroup[] {
 
 export async function createProfile(formData: FormData) {
   const { id: clientId } = await requireClient();
+  // A new profile starts on whatever plan the admin approved this client for,
+  // so a Normal-plan account cannot create itself a tailoring profile.
+  const owner = await prisma.client.findUnique({ where: { id: clientId }, select: { defaultPlan: true } });
   const profile = await prisma.profile.create({
     data: {
       clientId,
       label: str(formData.get("label")) || "Untitled profile",
       fullName: str(formData.get("fullName")) || "New Profile",
+      plan: planOf(owner?.defaultPlan),
       resumeFont: "sans",
       resumeAccent: "sky",
     },
