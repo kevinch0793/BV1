@@ -8,6 +8,10 @@ export const profileInclude = {
   education: { orderBy: { order: "asc" } },
   skills: true,
   baseResume: true,
+  // Metadata only — never `bytes`. The blob is up to 5MB and is only ever needed
+  // by the download route, which loads it on its own; selecting it here would
+  // drag the file into every profile page render.
+  fixedResume: { select: { filename: true, size: true, updatedAt: true } },
   jobs: { orderBy: { createdAt: "desc" } },
 } satisfies Prisma.ProfileInclude;
 

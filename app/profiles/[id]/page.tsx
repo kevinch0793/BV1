@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { profileWhere } from "@/lib/owner";
 import { profileInclude, asLinks, asProjectGroups } from "@/lib/profile-data";
+import { FixedResumeBox } from "@/components/FixedResumeBox";
 import {
   updateProfileBasics,
   deleteProfile,
@@ -202,6 +203,27 @@ export default async function ProfileEditor({ params }: { params: Promise<{ id: 
           />
           <button data-save className={saveBtn}>Save skills</button>
         </DirtyForm>
+      </Card>
+
+      {/* Fixed resume — what a "normal"-plan candidate attaches to every
+          application. Shown for every profile: uploading one costs nothing and
+          it is immediately useful as a fallback download. */}
+      <Card
+        title="Fixed resume"
+        subtitle="One PDF or DOCX attached to every application on the Normal plan. Downloads with the same clean name each time, so it replaces the previous copy."
+      >
+        <FixedResumeBox
+          profileId={profile.id}
+          current={
+            profile.fixedResume
+              ? {
+                  filename: profile.fixedResume.filename,
+                  size: profile.fixedResume.size,
+                  updatedAt: profile.fixedResume.updatedAt.toISOString().slice(0, 10),
+                }
+              : null
+          }
+        />
       </Card>
 
       {/* Base resume */}

@@ -7,6 +7,7 @@ import { parseResume } from "@/lib/llm/service";
 import { requireClient } from "@/lib/auth";
 import { assertOwnsProfile } from "@/lib/owner";
 import { isTemplateAllowed, DEFAULT_TEMPLATE, RESUME_FONTS, ACCENT_COLORS } from "@/components/templates";
+import { checkFixedResume } from "@/lib/fixedResume";
 
 const str = (v: FormDataEntryValue | null) => String(v ?? "").trim();
 const orNull = (v: FormDataEntryValue | null) => str(v) || null;
@@ -349,4 +350,39 @@ export async function updateProfileTemplateStyle(profileId: string, template: st
   revalidatePath("/profiles");
   revalidatePath(`/profiles/${profileId}`);
   revalidatePath("/resume", "layout");
+}
+
+/** Store the one fixed resume a "normal"-plan candidate attaches to every
+ *  application. Re-uploading replaces it (one row per profile). */
+export async function uploadFixedResume(
+  profileId: string,
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string; filename?: string }> {
+  await assertOwnsProfile(profileId);
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { ok: false, error: "Choose a file to upload." };
+
+  // Read once: the check needs the leading bytes, and the row needs all of them.
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const check = checkFixedResume({ filename: file.name, size: bytes.byteLength, head: bytes.subarray(0, 8) });
+  if (!check.ok) return { ok: false, error: check.error };
+
+  const data = {
+    filename: file.name.slice(0, 200),
+    mimeType: check.mimeType,
+    bytes: Buffer.from(bytes),
+    size: bytes.byteLength,
+  };
+  await prisma.fixedResume.upsert({ where: { profileId }, create: { profileId, ...data }, update: data });
+  revalidatePath(`/profiles/${profileId}`);
+  return { ok: true, filename: data.filename };
+}
+
+/** Remove the fixed resume. The profile keeps working; there is simply nothing
+ *  to download until another is uploaded. */
+export async function deleteFixedResume(profileId: string): Promise<{ ok: boolean }> {
+  await assertOwnsProfile(profileId);
+  await prisma.fixedResume.deleteMany({ where: { profileId } });
+  revalidatePath(`/profiles/${profileId}`);
+  return { ok: true };
 }

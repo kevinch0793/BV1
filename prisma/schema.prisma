@@ -150,6 +150,7 @@ model Profile {
   education   Education[]
   skills      Skill[]
   baseResume  BaseResume?
+  fixedResume FixedResume?
   jobs        JobPosting[]
   tailored    TailoredResume[]
   answerTokens AnswerToken[]
@@ -196,6 +197,21 @@ model BaseResume {
   profileId String   @unique
   profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
   rawText   String
+  updatedAt DateTime @updatedAt
+}
+
+/// The one fixed resume a "normal"-plan candidate attaches to every application.
+/// Stored as bytes in the database rather than on disk so the nightly SQLite
+/// backup covers it — a file on the volume would sit outside every backup.
+/// One per profile; re-uploading replaces it.
+model FixedResume {
+  id        String   @id @default(cuid())
+  profileId String   @unique
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  filename  String // as uploaded — its extension drives the download's name
+  mimeType  String // application/pdf | ...wordprocessingml.document
+  bytes     Bytes
+  size      Int // stored separately so a listing never has to load the blob
   updatedAt DateTime @updatedAt
 }
 
