@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { canTailorProfile } from "@/lib/plan";
+import { canTailorProfile, planAllowsTailoring } from "@/lib/plan";
 import { prisma } from "@/lib/db";
 import { profileWhere } from "@/lib/owner";
 import { appDayRange, currentAppDayKey, isValidDayKey } from "@/lib/appday";
@@ -30,6 +30,9 @@ export default async function ProfileDashboard({
     where: { id, ...(await profileWhere()) },
     include: {
       baseResume: { select: { id: true } },
+      // Existence only — never the blob, which can be 5MB and is loaded solely
+      // by the download route.
+      fixedResume: { select: { id: true } },
       // Only the selected day's jobs (default today).
       jobs: { where: { createdAt: { gte: start, lt: end } }, orderBy: { createdAt: "desc" } },
       tailored: { select: { id: true, jobPostingId: true, fitAfter: true } },
@@ -92,7 +95,16 @@ export default async function ProfileDashboard({
         </p>
       )}
 
-      <PipelineDashboard profileId={profile.id} jobs={jobs} canTailor={canTailor} isToday={isToday} dayLabel={label} paused={profile.paused} />
+      <PipelineDashboard
+        profileId={profile.id}
+        jobs={jobs}
+        canTailor={canTailor}
+        isNormalPlan={!planAllowsTailoring(profile.plan)}
+        hasFixedResume={!!profile.fixedResume}
+        isToday={isToday}
+        dayLabel={label}
+        paused={profile.paused}
+      />
     </div>
   );
 }

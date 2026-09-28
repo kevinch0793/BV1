@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { addJobUrls, filterJobUrls, setJobFromText, deleteJob, deleteJobs, setApplyStatus, updateJobFields, type ApplyStatus, type FilteredOut } from "@/app/actions/jobs";
 import { startPipeline, jobStatuses, ensurePipelineRunning, retryJob, retryJobs, type LiveJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
-import { downloadResumeNative } from "@/lib/exportClient";
+import { downloadResumeNative, downloadFixedResumeNative } from "@/lib/exportClient";
 import { saveResumeToDownloads } from "@/app/actions/export";
 import { fitColor } from "@/lib/fit";
 import { workplaceOf, briefState, type Workplace } from "@/lib/location";
@@ -86,6 +86,12 @@ export function PipelineDashboard({
   profileId,
   jobs,
   canTailor,
+  // "normal" plan: jobs are fetched and tracked, but never tailored — the
+  // candidate applies with one uploaded resume instead. Passed separately from
+  // canTailor because the two reasons a profile cannot tailor need different
+  // wording: a plan is a deliberate setting, missing profile data is a to-do.
+  isNormalPlan,
+  hasFixedResume,
   isToday,
   dayLabel,
   paused,
@@ -93,6 +99,8 @@ export function PipelineDashboard({
   profileId: string;
   jobs: Job[];
   canTailor: boolean;
+  isNormalPlan: boolean;
+  hasFixedResume: boolean;
   isToday: boolean;
   dayLabel: string;
   paused: boolean;
@@ -382,8 +390,17 @@ export function PipelineDashboard({
           Template, tailoring model, and custom instructions are configured in{" "}
           <a href="/settings" className="text-sky-700 hover:underline">Settings</a>.
         </p>
-        {!canTailor && (
-          <p className="mt-3 text-xs text-amber-600">Tailoring needs a base resume or a project on the profile — until then jobs will only be fetched.</p>
+        {isNormalPlan ? (
+          <p className="mt-3 text-xs text-neutral-500">
+            This profile is on the <strong>Normal</strong> plan: jobs are fetched and tracked, and Apply attaches the fixed
+            resume from the{" "}
+            <a href={`/profiles/${profileId}`} className="text-sky-700 hover:underline">profile</a>
+            {hasFixedResume ? "" : " — none uploaded yet"}.
+          </p>
+        ) : (
+          !canTailor && (
+            <p className="mt-3 text-xs text-amber-600">Tailoring needs a base resume or a project on the profile — until then jobs will only be fetched.</p>
+          )
         )}
       </section>
       )}
@@ -470,6 +487,9 @@ export function PipelineDashboard({
                       onPasted={kick}
                       onRefresh={() => router.refresh()}
                       paused={paused}
+                      profileId={profileId}
+                      isNormalPlan={isNormalPlan}
+                      hasFixedResume={hasFixedResume}
                     />
                   );
                 })}
@@ -491,6 +511,9 @@ function JobRow({
   onPasted,
   onRefresh,
   paused,
+  profileId,
+  isNormalPlan,
+  hasFixedResume,
 }: {
   job: Job;
   selected: boolean;
@@ -500,6 +523,9 @@ function JobRow({
   onPasted: () => void;
   onRefresh: () => void;
   paused: boolean;
+  profileId: string;
+  isNormalPlan: boolean;
+  hasFixedResume: boolean;
 }) {
   const [showPaste, setShowPaste] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -543,6 +569,14 @@ function JobRow({
   // can't prove the resume was used, so you confirm that yourself afterward via
   // the dropdown + tailored/generic toggle.
   function apply() {
+    // Normal plan: there is no tailored resume, so Apply attaches the one fixed
+    // file. Same /api/export/ prefix, so the extension still renames it and
+    // overwrites the previous copy.
+    if (isNormalPlan) {
+      if (hasFixedResume) downloadFixedResumeNative(profileId);
+      if (job.url) window.open(job.url, "_blank", "noopener,noreferrer");
+      return;
+    }
     const tid = job.tailoredId;
     if (tid) {
       const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(window.location.hostname);
@@ -603,7 +637,15 @@ function JobRow({
             <button
               onClick={apply}
               disabled={applying}
-              title={job.tailoredId ? "Open the job posting and download your tailored resume" : "Open the job posting"}
+              title={
+                isNormalPlan
+                  ? hasFixedResume
+                    ? "Open the job posting and download your fixed resume"
+                    : "Open the job posting — no fixed resume uploaded yet"
+                  : job.tailoredId
+                    ? "Open the job posting and download your tailored resume"
+                    : "Open the job posting"
+              }
               className="font-medium text-sky-700 hover:underline disabled:opacity-50"
             >
               {applying ? "Opening…" : "Apply ↗"}
