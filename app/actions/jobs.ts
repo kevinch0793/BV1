@@ -9,7 +9,7 @@ import { extractJobFields } from "@/lib/llm/service";
 import { assertOwnsProfile, assertOwnsJob } from "@/lib/owner";
 import { isProfilePaused } from "@/lib/pipeline";
 import { shouldTailorWorkplace } from "@/lib/location";
-import { normalizeUrl, normalizeUrls } from "@/lib/url";
+import { normalizeUrl, normalizeUrls, jobIdentityKey } from "@/lib/url";
 
 const PAUSED_MSG = "This profile is paused by an admin — resume it to add or fetch jobs.";
 
@@ -87,17 +87,26 @@ export async function filterJobUrls(
     return { ok: false, ...empty, error: "Enter at least one URL." };
   }
 
+  // Compared on the job's identity, not the raw URL: aggregators re-list the same
+  // posting with a fresh tracking id, which made the same job look new.
   const existing = await prisma.jobPosting.findMany({ where: { profileId }, select: { url: true } });
-  const have = new Set(existing.map((e) => normalizeUrl(e.url)).filter((u): u is string => !!u));
+  const have = new Set(existing.map((e) => jobIdentityKey(e.url)).filter((u): u is string => !!u));
   const blacklist = await getCompanyBlacklist();
 
   const passed: string[] = [];
   const unverified: string[] = [];
+  const seen = new Set<string>();
   for (const url of urls) {
-    if (have.has(url)) {
+    const key = jobIdentityKey(url) ?? url;
+    if (have.has(key)) {
       removed.push({ url, reason: "already on this profile" });
       continue;
     }
+    if (seen.has(key)) {
+      removed.push({ url, reason: "duplicate in this paste" });
+      continue;
+    }
+    seen.add(key);
     const slug = companySlugFromUrl(url);
     if (!slug) {
       unverified.push(url); // board hides the company — decided after extraction
@@ -121,10 +130,19 @@ export async function addJobUrls(
   const urls = normalizeUrls(String(formData.get("urls") ?? ""));
   if (urls.length === 0) return { ok: false, added: 0, skipped: 0, error: "Enter at least one URL." };
 
-  // Skip any URL already on this profile (compare normalized on both sides).
+  // Skip any URL already on this profile, compared on the job's IDENTITY rather
+  // than the raw URL: an aggregator re-listing the same posting mints a fresh
+  // tracking id, so raw comparison let the same job in repeatedly. The URL is
+  // still STORED exactly as pasted -- only the comparison is normalized.
   const existing = await prisma.jobPosting.findMany({ where: { profileId }, select: { url: true } });
-  const have = new Set(existing.map((e) => normalizeUrl(e.url)).filter((u): u is string => !!u));
-  const fresh = urls.filter((u) => !have.has(u));
+  const have = new Set(existing.map((e) => jobIdentityKey(e.url)).filter((u): u is string => !!u));
+  const seen = new Set<string>();
+  const fresh = urls.filter((u) => {
+    const key = jobIdentityKey(u) ?? u;
+    if (have.has(key) || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   const skipped = urls.length - fresh.length;
 
   // Blacklist, first pass: the company slug most boards carry in the URL. A hit

@@ -29,6 +29,49 @@ export function normalizeUrl(raw: string | null | undefined): string | null {
 }
 
 /**
+ * Query parameters that identify the REFERRAL, not the job. Aggregators mint a
+ * fresh one every time they re-list a posting, so leaving them in makes the same
+ * job look new: two Jobright links to one Greenhouse posting differ only in
+ * `jr_id` while carrying an identical `token`.
+ *
+ * Deliberately a short allow-list of known-tracking names rather than a guess.
+ * Board parameters that DO identify the job — `token`, `gh_jid`, `for`, `cid`,
+ * `ccId`, `jobId` — must survive, or two different postings would collapse into
+ * one and the second would be silently discarded as a duplicate.
+ */
+const TRACKING_PARAMS = new Set(["jr_id", "lever-source", "gh_src", "gclid", "fbclid", "mc_cid", "mc_eid"]);
+
+/**
+ * A URL reduced to what identifies the JOB, for duplicate comparison only.
+ *
+ * Never stored: `addJobUrls` keeps the URL as pasted, so the referral link the
+ * user actually clicked is preserved. This is purely the key the duplicate check
+ * compares on.
+ *
+ * Returns null for anything unparseable, matching normalizeUrl.
+ */
+export function jobIdentityKey(raw: string | null | undefined): string | null {
+  const normalized = normalizeUrl(raw);
+  if (!normalized) return null;
+  try {
+    const u = new URL(normalized);
+    const keep = [...u.searchParams].filter(
+      ([k]) => !TRACKING_PARAMS.has(k.toLowerCase()) && !k.toLowerCase().startsWith("utm_"),
+    );
+    // Sort so a board that reorders its own query string can't look like a
+    // different job.
+    keep.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+    u.search = "";
+    for (const [k, v] of keep) u.searchParams.append(k, v);
+    let out = u.toString();
+    if (out.endsWith("/")) out = out.slice(0, -1);
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Parse a textarea of pasted job links into normalized URLs. Robust to pasting a
  * spreadsheet: pull out EVERY explicit http(s) URL (one per row even when each row
  * is "Company<TAB>Role<TAB>URL", plus comma/space lists and one-per-line). Falls
