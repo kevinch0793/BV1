@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { addJobUrls, setJobFromText, deleteJob, deleteJobs, setApplyStatus, updateJobFields, type ApplyStatus } from "@/app/actions/jobs";
 import { startPipeline, jobStatuses, ensurePipelineRunning, retryJob, retryJobs, type LiveJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
-import { downloadResumeNative, downloadFixedResumeNative } from "@/lib/exportClient";
+import { downloadResumeNative } from "@/lib/exportClient";
 import { saveResumeToDownloads } from "@/app/actions/export";
 import { fitColor } from "@/lib/fit";
 import { workplaceOf, briefState, type Workplace } from "@/lib/location";
@@ -419,9 +419,7 @@ export function PipelineDashboard({
                       onPasted={kick}
                       onRefresh={() => router.refresh()}
                       paused={paused}
-                      profileId={profileId}
                       isNormalPlan={isNormalPlan}
-                      hasFixedResume={hasFixedResume}
                     />
                   );
                 })}
@@ -443,9 +441,7 @@ function JobRow({
   onPasted,
   onRefresh,
   paused,
-  profileId,
   isNormalPlan,
-  hasFixedResume,
 }: {
   job: Job;
   selected: boolean;
@@ -455,9 +451,7 @@ function JobRow({
   onPasted: () => void;
   onRefresh: () => void;
   paused: boolean;
-  profileId: string;
   isNormalPlan: boolean;
-  hasFixedResume: boolean;
 }) {
   const [showPaste, setShowPaste] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -501,11 +495,12 @@ function JobRow({
   // can't prove the resume was used, so you confirm that yourself afterward via
   // the dropdown + tailored/generic toggle.
   function apply() {
-    // Normal plan: there is no tailored resume, so Apply attaches the one fixed
-    // file. Same /api/export/ prefix, so the extension still renames it and
-    // overwrites the previous copy.
+    // Normal plan: just open the posting. The fixed resume is the SAME file for
+    // every job, so re-downloading it on each Apply only piles up copies of
+    // something the candidate already has; it stays available on demand from the
+    // profile page. (On the Tailor plan each job has its own resume, which is why
+    // that path does download.)
     if (isNormalPlan) {
-      if (hasFixedResume) downloadFixedResumeNative(profileId);
       if (job.url) window.open(job.url, "_blank", "noopener,noreferrer");
       return;
     }
@@ -571,9 +566,7 @@ function JobRow({
               disabled={applying}
               title={
                 isNormalPlan
-                  ? hasFixedResume
-                    ? "Open the job posting and download your fixed resume"
-                    : "Open the job posting — no fixed resume uploaded yet"
+                  ? "Open the job posting"
                   : job.tailoredId
                     ? "Open the job posting and download your tailored resume"
                     : "Open the job posting"

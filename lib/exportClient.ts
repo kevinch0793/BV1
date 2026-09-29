@@ -25,24 +25,6 @@ export function downloadResumeNative(
   a.remove();
 }
 
-/**
- * The same gesture-tied download for a profile's FIXED resume — the one file a
- * "normal"-plan candidate attaches to every application.
- *
- * Shares the /api/export/ prefix with the tailored route on purpose: the browser
- * extension only renames-and-overwrites downloads under that path, so both plans
- * end up with one clean "First Last.pdf" rather than a pile of copies.
- */
-export function downloadFixedResumeNative(profileId: string): void {
-  const a = document.createElement("a");
-  a.href = `/api/export/fixed/${profileId}`;
-  a.download = "";
-  a.rel = "noopener";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
-
 export async function downloadResume(
   tailoredId: string,
   format: "pdf" | "docx",
