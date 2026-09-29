@@ -92,10 +92,19 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-# Apply any pending migrations, then serve. Safe on every boot: `migrate deploy`
-# is a no-op when the schema is already current, and this container is the only
-# writer to its database (so it cannot hit the "database is locked" error that a
-# concurrently-running server would cause).
+# Apply any pending migrations, then serve.
+#
+# Migration failure does NOT stop the server starting. It used to: the command
+# was `migrate deploy && exec next start`, so any non-zero exit from the CLI took
+# the whole site down. That is the wrong trade for this deployment -- a migration
+# problem is a schema problem, while refusing to boot is an outage, and the two
+# are not the same severity. It has already happened once: a malformed row in
+# _prisma_migrations made the CLI exit non-zero and the container crash-looped
+# into 502s while the application itself was perfectly healthy.
+#
+# The failure is made loud rather than swallowed: the warning below is greppable
+# in `docker logs`, and schema changes on this host are applied by hand anyway
+# (the CLI cannot take the write lock while the server holds the database).
 #
 # `exec` matters: without it, /bin/sh stays PID 1 and does NOT forward SIGTERM to
 # its child, so `docker compose down` would hang for the 10s grace period and then
@@ -103,4 +112,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 # exec replaces the shell with the server, so signals reach it directly. Calling
 # the next binary rather than `npm run start` removes npm as another layer that
 # would have to relay the signal.
-CMD ["sh", "-c", "npx prisma migrate deploy && exec node_modules/.bin/next start"]
+CMD ["sh", "-c", "npx prisma migrate deploy || echo '[startup] WARNING: prisma migrate deploy FAILED - serving anyway. The schema may be behind; apply pending migrations by hand and see the lines above for why.'; exec node_modules/.bin/next start"]
