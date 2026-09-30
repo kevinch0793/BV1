@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addJobUrls, setJobFromText, deleteJob, deleteJobs, setApplyStatus, updateJobFields, type ApplyStatus } from "@/app/actions/jobs";
-import { startPipeline, jobStatuses, ensurePipelineRunning, retryJob, retryJobs, type LiveJob } from "@/app/actions/pipeline";
+import { startPipeline, jobStatuses, ensurePipelineRunning, retryJob, retryJobs, llmKeyStatus, type LiveJob } from "@/app/actions/pipeline";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResumeNative } from "@/lib/exportClient";
 import { saveResumeToDownloads } from "@/app/actions/export";
@@ -116,6 +116,11 @@ export function PipelineDashboard({
   const [adding, startAdd] = useTransition();
   const [addMsg, setAddMsg] = useState<string | null>(null);
   const urlsRef = useRef<HTMLTextAreaElement>(null);
+  // Set when Add & run is pressed while the LLM key is unusable; holds the reason
+  // so the warning explains itself. "Add anyway" then stores the URLs (minus
+  // blacklisted companies) without any fetching or tailoring.
+  const [noKey, setNoKey] = useState<string | null>(null);
+  const [checkingKey, startKeyCheck] = useTransition();
   // Row selection for bulk "Retry fetch".
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [retrying, setRetrying] = useState(false);
@@ -171,6 +176,29 @@ export function PipelineDashboard({
       clearInterval(id);
     };
   }, [polling, profileId, router]);
+
+  /** Add whatever is in the box. Shared by the normal path and "Add anyway", so
+   *  proceeding without a key takes exactly the same route — the difference is
+   *  only that the pipeline then declines to start. */
+  function runAdd() {
+    setNoKey(null);
+    const fd = new FormData();
+    fd.set("urls", urlsRef.current?.value ?? "");
+    startAdd(async () => {
+      const r = await addJobUrls(profileId, fd);
+      if (!r.ok) {
+        setAddMsg(r.error ?? "Failed");
+        return;
+      }
+      const parts: string[] = [];
+      if (r.added) parts.push(`Added ${r.added}`);
+      if (r.skipped) parts.push(`skipped ${r.skipped} duplicate${r.skipped === 1 ? "" : "s"}`);
+      if (r.excluded) parts.push(`excluded ${r.excluded} blacklisted`);
+      setAddMsg(parts.length ? `${parts.join(", ")}.` : "No new URLs.");
+      if (urlsRef.current) urlsRef.current.value = "";
+      if (r.added) await kick();
+    });
+  }
 
   async function kick() {
     await startPipeline(profileId);
@@ -275,26 +303,7 @@ export function PipelineDashboard({
           One URL per line. Blacklisted companies and URLs already on this profile are dropped automatically; the rest are
           fetched and tailored in the background, and it keeps running even if you leave this page.
         </p>
-        <form
-          action={(fd) => {
-            setAddMsg(null);
-            startAdd(async () => {
-              const r = await addJobUrls(profileId, fd);
-              if (!r.ok) {
-                setAddMsg(r.error ?? "Failed");
-                return;
-              }
-              const parts: string[] = [];
-              if (r.added) parts.push(`Added ${r.added}`);
-              if (r.skipped) parts.push(`skipped ${r.skipped} duplicate${r.skipped === 1 ? "" : "s"}`);
-              if (r.excluded) parts.push(`excluded ${r.excluded} blacklisted`);
-              setAddMsg(parts.length ? `${parts.join(", ")}.` : "No new URLs.");
-              if (urlsRef.current) urlsRef.current.value = "";
-              if (r.added) await kick();
-            });
-          }}
-          className="space-y-2"
-        >
+        <div className="space-y-2">
           <textarea
             ref={urlsRef}
             name="urls"
@@ -302,12 +311,51 @@ export function PipelineDashboard({
             className={input}
             placeholder={"https://…/job/1\nhttps://…/job/2"}
           />
+          {noKey && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <p className="font-medium">Proceed without a working API key?</p>
+              <p className="mt-0.5">{noKey}</p>
+              <p className="mt-1">
+                The URLs will be saved and blacklisted companies removed, but <strong>nothing will be fetched, analysed or
+                tailored</strong> until the key works again — then it resumes on its own. Jobs still unprocessed after about
+                two days are deleted automatically.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  disabled={adding}
+                  onClick={() => runAdd()}
+                  className="rounded-md bg-amber-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50"
+                >
+                  Add anyway
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNoKey(null)}
+                  className="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-xs text-amber-800 hover:bg-amber-100"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-3">
             <button
-              disabled={adding}
+              type="button"
+              disabled={adding || checkingKey}
+              onClick={() => {
+                setAddMsg(null);
+                // Probe the key first: with a dead one every job would be
+                // written as "failed" by the extraction error, so warn instead.
+                startKeyCheck(async () => {
+                  const k = await llmKeyStatus();
+                  if (k.ok) runAdd();
+                  else setNoKey(k.reason ?? "The LLM key is not usable.");
+                });
+              }}
               className="rounded-md bg-sky-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-800 disabled:opacity-50"
             >
-              {adding ? "Adding…" : "Add & run"}
+              {adding ? "Adding…" : checkingKey ? "Checking…" : "Add & run"}
             </button>
             {polling && (
               <span className="inline-flex items-center gap-2 text-sm text-sky-700">
@@ -316,7 +364,7 @@ export function PipelineDashboard({
             )}
             {addMsg && !polling && <span className="text-sm text-neutral-500">{addMsg}</span>}
           </div>
-        </form>
+        </div>
 
         <p className="mt-3 text-xs text-neutral-400">
           Template, tailoring model, and custom instructions are configured in{" "}

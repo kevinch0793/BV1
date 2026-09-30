@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { findJobDescription } from "@/lib/scrape/fetchHtml";
 import { matchBlacklist } from "@/lib/blacklist";
+import { llmKeyHealth } from "@/lib/llm/health";
 import { canTailorProfile } from "@/lib/plan";
 import { extractJobFields, tailorResume, type TailorArgs } from "@/lib/llm/service";
 import { createTailorBatch, waitForBatch, collectTailorResults, listOpenBatchIds, type TailorBatchRequest, type BatchUsage } from "@/lib/llm/batch";
@@ -36,6 +37,18 @@ export async function startPipeline(profileId: string, opts: PipelineOpts): Prom
   // covers every entry point (dashboard kick, ensurePipelineRunning, resumeAll,
   // boot) and stops the stuck-status resets below from firing while paused.
   if (await isProfilePaused(profileId)) return;
+
+  // No usable LLM key: leave the work alone rather than grinding it into
+  // failures. Every stage needs OpenAI, and a job whose extraction throws is
+  // written as "failed" with the auth error -- so starting here would turn a
+  // whole paste into rows that each need retrying by hand. Left "pending", they
+  // are picked up automatically by the next sweep once a working key is in
+  // place. Cached for a minute, so this costs nothing per start.
+  const key = await llmKeyHealth();
+  if (!key.ok) {
+    console.warn(`[pipeline] not starting ${profileId}: ${key.reason ?? "LLM key unusable"} — work left pending`);
+    return;
+  }
 
   // Already running: just refresh options. The running loop re-gathers between
   // rounds, so any newly-pending (e.g. retried) job gets picked up on its own.

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { llmKeyHealth } from "@/lib/llm/health";
 import { prisma } from "@/lib/db";
 import { getSettings, getGlobalModel } from "@/lib/settings";
 import { requireClient, requireAdmin } from "@/lib/auth";
@@ -119,6 +120,17 @@ export async function jobStatuses(profileId: string, jobIds: string[]): Promise<
  * fetched but not yet tailored — (re)start it. start() resets the stuck statuses
  * before looping, so a frozen run resumes just by loading the dashboard.
  */
+/**
+ * Is the LLM key usable? Called before adding URLs so the user is warned that
+ * nothing will be fetched or tailored, rather than discovering it when every job
+ * lands as "failed".
+ */
+export async function llmKeyStatus(): Promise<{ ok: boolean; reason?: string }> {
+  await requireClient();
+  const h = await llmKeyHealth();
+  return { ok: h.ok, reason: h.reason };
+}
+
 export async function ensurePipelineRunning(profileId: string): Promise<{ running: boolean; paused?: boolean }> {
   const clientId = await assertOwnsProfile(profileId);
   if (await isProfilePaused(profileId)) return { running: false, paused: true };
