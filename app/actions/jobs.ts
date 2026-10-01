@@ -9,9 +9,10 @@ import { extractJobFields } from "@/lib/llm/service";
 import { assertOwnsProfile, assertOwnsJob } from "@/lib/owner";
 import { isProfilePaused } from "@/lib/pipeline";
 import { shouldTailorWorkplace } from "@/lib/location";
-import { normalizeUrl, normalizeUrls, jobIdentityKey } from "@/lib/url";
+import { normalizeUrls, jobIdentityKey } from "@/lib/url";
 
-const PAUSED_MSG = "This profile is paused by an admin — resume it to add or fetch jobs.";
+const PAUSED_MSG =
+  "This profile is not enabled — an admin must enable it before jobs can be added, fetched or tailored.";
 
 export type JobActionResult = { ok: boolean; error?: string; needsPaste?: boolean };
 

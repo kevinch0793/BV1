@@ -48,6 +48,13 @@ export async function createProfile(formData: FormData) {
       label: str(formData.get("label")) || "Untitled profile",
       fullName: str(formData.get("fullName")) || "New Profile",
       plan: planOf(owner?.defaultPlan),
+      // New profiles start DISABLED: an admin enables them before any job can be
+      // added, fetched or tailored. Reuses the existing `paused` gate rather than
+      // a second flag, because that gate is already enforced at every entry point
+      // -- the pipeline start, each loop round, the tailor step, adding URLs,
+      // pasting a JD and retries -- and a parallel field would have to re-cover
+      // all of them.
+      paused: true,
       resumeFont: "sans",
       resumeAccent: "sky",
     },

@@ -2,6 +2,8 @@ import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { approveClient, rejectClient, setProfilePlan, setClientDefaultPlan } from "@/app/actions/admin";
 import { PlanSelect } from "@/components/admin/PlanSelect";
+import { ProfileEnableToggle } from "@/components/admin/ProfileEnableToggle";
+import { setProfilePaused } from "@/app/actions/pipeline";
 import { planOf } from "@/lib/plan";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +25,7 @@ export default async function AdminClientsPage() {
       status: true,
       createdAt: true,
       defaultPlan: true,
-      profiles: { select: { id: true, label: true, fullName: true, plan: true }, orderBy: { createdAt: "asc" } },
+      profiles: { select: { id: true, label: true, fullName: true, plan: true, paused: true }, orderBy: { createdAt: "asc" } },
       _count: { select: { profiles: true } },
     },
   });
@@ -72,6 +74,7 @@ export default async function AdminClientsPage() {
                           <span className="min-w-[10rem] truncate text-xs text-neutral-700" title={`${p.fullName} — ${p.label}`}>
                             {p.fullName}
                           </span>
+                          <ProfileEnableToggle enabled={!p.paused} onChange={setProfilePaused.bind(null, p.id)} />
                           <PlanSelect
                             value={planOf(p.plan)}
                             title={`Plan for ${p.fullName}`}
