@@ -1,5 +1,8 @@
 import { prisma } from "@/lib/db";
+import { staleIncompleteWhere } from "@/lib/retention-policy";
 import { recentAppDayKeys, appDayRange } from "@/lib/appday";
+
+export { staleIncompleteWhere };
 
 // Keep only the most recent N app-days of job activity in the database; older
 // jobs (and their tailored resumes, via cascade) are pruned automatically and
@@ -82,16 +85,12 @@ export function activeCutoff(): Date {
 }
 
 /**
- * Remove NON-COMPLETED jobs older than yesterday (created before activeCutoff()).
- * "Completed" = has a tailored resume — those are kept as history (up to the 30-day
- * window). So stale pending / fetching / tailoring / fetched-but-untailored /
- * failed / needs_jd rows are deleted; a job that ever produced a resume is never
- * touched. Safe to fire-and-forget.
+ * Remove abandoned jobs older than yesterday (created before activeCutoff()).
+ * See staleIncompleteWhere for what "abandoned" excludes. Completed work is kept
+ * as history up to the 30-day window. Safe to fire-and-forget.
  */
 export async function pruneStaleIncomplete(): Promise<{ jobs: number }> {
-  const res = await prisma.jobPosting.deleteMany({
-    where: { createdAt: { lt: activeCutoff() }, tailored: { none: {} } },
-  });
+  const res = await prisma.jobPosting.deleteMany({ where: staleIncompleteWhere(activeCutoff()) });
   return { jobs: res.count };
 }
 
