@@ -294,3 +294,28 @@ model UsageEvent {
   @@index([clientId, createdAt])
   @@index([createdAt])
 }
+
+// An OpenAI API key the admin can switch between from /admin/keys.
+//
+// Keys used to live only in .env, which meant changing one required editing the
+// file and recreating the container (compose reads env_file at create time, so a
+// plain restart keeps the old value). Holding them here lets a switch take effect
+// on the next request. OPENAI_API_KEY is still honoured as a fallback when no row
+// is active, so the platform keeps working if this table is empty.
+//
+// `last6` exists so the UI can identify a key without ever receiving `secret`.
+model ApiKey {
+  id        String  @id @default(cuid())
+  label     String // admin-facing name, e.g. "Main account"
+  secret    String // the key itself; never sent to the browser
+  last6     String // display suffix, e.g. "Q8OIYA"
+  active    Boolean @default(false) // exactly one row should be active
+  // Result of the last live probe. Kept so the list renders instantly before the
+  // page re-checks, and so a key's history is visible after it dies.
+  lastStatus    String? // ok | revoked | no_credit | rate_limited | error
+  lastDetail    String?
+  lastCheckedAt DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([active])
+}

@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import { recordUsage } from "@/lib/llm/usage";
+import { activeKeySecret } from "@/lib/apiKeys";
 
 // Two lazily-constructed OpenAI clients, so resume TAILORING can bill to a
 // different account than the cheap, high-volume extraction work:
@@ -15,9 +16,11 @@ import { recordUsage } from "@/lib/llm/usage";
 export type OpenAIKeyPurpose = "extract" | "tailor";
 
 let _client: OpenAI | null = null;
+// The secret _client was built with, so a key switched in the admin UI is noticed.
+let _clientSecret = "";
 let _tailorClient: OpenAI | null = null;
 
-function getClient(purpose: OpenAIKeyPurpose = "extract"): OpenAI {
+async function getClient(purpose: OpenAIKeyPurpose = "extract"): Promise<OpenAI> {
   if (purpose === "tailor") {
     const tailorKey = process.env.OPENAI_TAILOR_API_KEY?.trim();
     // Pass the key EXPLICITLY — the SDK's implicit `new OpenAI()` only ever reads
@@ -28,11 +31,17 @@ function getClient(purpose: OpenAIKeyPurpose = "extract"): OpenAI {
     }
     // No dedicated key set → fall through and share the extraction key.
   }
-  if (!_client) {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error("OPENAI_API_KEY is not set — add it to .env.");
-    }
-    _client = new OpenAI();
+  // The active key is chosen in Admin > API keys and falls back to
+  // OPENAI_API_KEY, so an empty key table behaves exactly as before.
+  const secret = await activeKeySecret();
+  if (!secret) {
+    throw new Error("No OpenAI API key is set — add one in Admin > API keys, or set OPENAI_API_KEY.");
+  }
+  // Rebuild when the secret changes so switching a key takes effect on the next
+  // call rather than waiting for a restart.
+  if (!_client || _clientSecret !== secret) {
+    _client = new OpenAI({ apiKey: secret });
+    _clientSecret = secret;
   }
   return _client;
 }
@@ -63,7 +72,7 @@ export async function generateStructuredOpenAI<T>({
   keyPurpose?: OpenAIKeyPurpose;
 }): Promise<T> {
   const t0 = Date.now();
-  const completion = await getClient(keyPurpose).chat.completions.parse({
+  const completion = await (await getClient(keyPurpose)).chat.completions.parse({
     model,
     max_completion_tokens: maxTokens,
     messages: [

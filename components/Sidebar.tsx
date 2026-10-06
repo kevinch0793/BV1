@@ -70,6 +70,14 @@ const usageIcon = (
   </>
 );
 
+const keyIcon = (
+  <>
+    <circle cx="7.5" cy="15.5" r="4.5" />
+    <path d="M10.7 12.3 21 2" />
+    <path d="m17 6 3 3" />
+  </>
+);
+
 export function Sidebar({ isAdmin, clientEmail }: { isAdmin: boolean; clientEmail: string }) {
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
@@ -108,6 +116,12 @@ export function Sidebar({ isAdmin, clientEmail }: { isAdmin: boolean; clientEmai
                 {usageIcon}
               </svg>
               Usage
+            </Link>
+            <Link href="/admin/keys" className={linkCls("/admin/keys")}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                {keyIcon}
+              </svg>
+              API keys
             </Link>
           </>
         )}
