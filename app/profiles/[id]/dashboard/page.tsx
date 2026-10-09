@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { canTailorProfile, planAllowsTailoring } from "@/lib/plan";
 import { prisma } from "@/lib/db";
 import { profileWhere } from "@/lib/owner";
+import { visibleJobWhere } from "@/lib/jobVisibility";
 import { appDayRange, currentAppDayKey, isValidDayKey } from "@/lib/appday";
 import { PipelineDashboard } from "./PipelineDashboard";
 
@@ -34,7 +35,7 @@ export default async function ProfileDashboard({
       // by the download route.
       fixedResume: { select: { id: true } },
       // Only the selected day's jobs (default today).
-      jobs: { where: { createdAt: { gte: start, lt: end } }, orderBy: { createdAt: "desc" } },
+      jobs: { where: { createdAt: { gte: start, lt: end }, ...visibleJobWhere }, orderBy: { createdAt: "desc" } },
       tailored: { select: { id: true, jobPostingId: true, fitAfter: true } },
       _count: { select: { experiences: true } },
     },

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addJobUrls, setJobFromText, deleteJob, deleteJobs, setApplyStatus, updateJobFields, type ApplyStatus } from "@/app/actions/jobs";
 import { startPipeline, jobStatuses, ensurePipelineRunning, retryJob, retryJobs, llmKeyStatus, type LiveJob } from "@/app/actions/pipeline";
+import { isVisibleJobStatus } from "@/lib/jobVisibility";
 import { ResumePreviewModal } from "@/components/ResumePreviewModal";
 import { downloadResumeNative } from "@/lib/exportClient";
 import { saveResumeToDownloads } from "@/app/actions/export";
@@ -131,11 +132,18 @@ export function PipelineDashboard({
   // Re-sort whenever job data changes (incl. after tailoring status updates from
   // polling): Fetchable+Remote → Fetchable+Onsite → Unfetchable. Stable within a
   // group (preserves the server's reverse-chronological order).
-  const sortedJobs = useMemo(
-    () => jobs.map((j, i) => [j, i] as const).sort(([a, ai], [b, bi]) => sortRank(a) - sortRank(b) || ai - bi).map(([j]) => j),
-    [jobs],
+  // A blacklisted company is only known after extraction, so a row can turn
+  // "excluded" while it is on screen. Visibility is judged on the LIVE status
+  // where the poll has one, so the row leaves the list without a reload.
+  const visibleJobs = useMemo(
+    () => jobs.filter((j) => isVisibleJobStatus(live.get(j.id)?.status ?? j.status)),
+    [jobs, live],
   );
-  const appliedCount = useMemo(() => jobs.filter((j) => j.applyStatus === "applied").length, [jobs]);
+  const sortedJobs = useMemo(
+    () => visibleJobs.map((j, i) => [j, i] as const).sort(([a, ai], [b, bi]) => sortRank(a) - sortRank(b) || ai - bi).map(([j]) => j),
+    [visibleJobs],
+  );
+  const appliedCount = useMemo(() => visibleJobs.filter((j) => j.applyStatus === "applied").length, [visibleJobs]);
 
   // On load, self-heal: resume the pipeline if it's already running, or restart
   // it if there's unfinished work (pending jobs, or jobs left stuck in
@@ -389,7 +397,7 @@ export function PipelineDashboard({
       <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200 px-4 py-2">
           <span className="text-sm font-medium text-neutral-700">
-            Jobs ({jobs.length})
+            Jobs ({visibleJobs.length})
             {appliedCount > 0 && <span className="ml-1.5 font-normal text-emerald-700">· {appliedCount} applied</span>}
           </span>
           {selected.size > 0 && (
@@ -424,7 +432,7 @@ export function PipelineDashboard({
             </div>
           )}
         </div>
-        {jobs.length === 0 ? (
+        {visibleJobs.length === 0 ? (
           <p className="px-4 py-6 text-sm text-neutral-400">
             {isToday ? "No jobs yet — add URLs above." : `No jobs from ${dayLabel}.`}
           </p>

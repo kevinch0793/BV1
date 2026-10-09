@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { ownedByProfileWhere, profileWhere } from "@/lib/owner";
+import { visibleJobWhere } from "@/lib/jobVisibility";
 import { fitColor } from "@/lib/fit";
 import { fuzzyScore } from "@/lib/fuzzy";
 import { workplaceOf, briefState, type Workplace } from "@/lib/location";
@@ -39,7 +40,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   if (!hasFilter) {
     // Default browse — cheap recent-100 with bounded relation loads.
     const recent = await prisma.jobPosting.findMany({
-      where: jobScope,
+      where: { ...jobScope, ...visibleJobWhere },
       select: {
         id: true, company: true, role: true, location: true, workplace: true, status: true, applyStatus: true, appliedAt: true, url: true, profileId: true,
         profile: { select: { fullName: true, label: true } },
@@ -58,7 +59,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
     // no relation loads, P2029-safe) plus the profile names and tailored scores.
     const [jobs, profiles, tailored] = await Promise.all([
       prisma.jobPosting.findMany({
-        where: jobScope,
+        where: { ...jobScope, ...visibleJobWhere },
         select: { id: true, company: true, role: true, location: true, workplace: true, status: true, applyStatus: true, appliedAt: true, url: true, profileId: true },
         orderBy: { createdAt: "desc" },
       }),

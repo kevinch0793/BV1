@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { profileWhere, ownedByProfileWhere } from "@/lib/owner";
+import { visibleJobWhere } from "@/lib/jobVisibility";
 import { appDayKey, appDayRange, currentAppDayKey, recentAppDayKeys } from "@/lib/appday";
 import { normalizeRole } from "@/lib/roleFamily";
 import { fitBucketIndex, type ProfileMetrics } from "@/lib/insights";
@@ -13,17 +14,20 @@ export default async function InsightsPage() {
   const todayKey = currentAppDayKey();
   const dayKeys = recentAppDayKeys(180); // ~6 months — enough for the monthly view
   const chartStart = appDayRange(dayKeys[0]).start;
+  // Blacklisted rows are not results. They also skewed "pending", which is
+  // derived as total-minus-fetched and so counted every excluded row.
+  const visibleJobScope = { ...jobScope, ...visibleJobWhere };
   const appliedJobScope = { ...jobScope, applyStatus: "applied" };
   const tailoredLinked = { ...jobScope, jobPostingId: { not: null } };
 
   const [profiles, statusCounts, applyCounts, workplaceCounts, applyTailoredCounts, roleCounts, tailoredLinks, tailoredMax, fitRows, missingRows, appliedRows] =
     await Promise.all([
       prisma.profile.findMany({ where: profScope, orderBy: { createdAt: "asc" }, select: { id: true, label: true, fullName: true } }),
-      prisma.jobPosting.groupBy({ by: ["profileId", "status"], where: jobScope, _count: { _all: true } }),
-      prisma.jobPosting.groupBy({ by: ["profileId", "applyStatus"], where: jobScope, _count: { _all: true } }),
+      prisma.jobPosting.groupBy({ by: ["profileId", "status"], where: visibleJobScope, _count: { _all: true } }),
+      prisma.jobPosting.groupBy({ by: ["profileId", "applyStatus"], where: visibleJobScope, _count: { _all: true } }),
       prisma.jobPosting.groupBy({ by: ["profileId", "workplace"], where: appliedJobScope, _count: { _all: true } }),
       prisma.jobPosting.groupBy({ by: ["profileId", "appliedTailored"], where: appliedJobScope, _count: { _all: true } }),
-      prisma.jobPosting.groupBy({ by: ["profileId", "role"], where: jobScope, _count: { _all: true } }),
+      prisma.jobPosting.groupBy({ by: ["profileId", "role"], where: visibleJobScope, _count: { _all: true } }),
       prisma.tailoredResume.findMany({ where: tailoredLinked, select: { profileId: true, jobPostingId: true } }),
       prisma.tailoredResume.groupBy({ by: ["profileId"], where: tailoredLinked, _max: { createdAt: true } }),
       prisma.tailoredResume.findMany({ where: { ...tailoredLinked, fitAfter: { not: null } }, select: { profileId: true, fitAfter: true, fitBefore: true } }),

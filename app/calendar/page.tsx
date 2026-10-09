@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { ownedByProfileWhere, profileWhere } from "@/lib/owner";
+import { visibleJobWhere } from "@/lib/jobVisibility";
 import { appDayKey, appDayRange } from "@/lib/appday";
 import { CalendarView, type DayEntry } from "@/components/CalendarView";
 
@@ -37,7 +38,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   // (P2029). These three queries each use a join/range filter, no big IN.
   const [jobs, profiles, tailored] = await Promise.all([
     prisma.jobPosting.findMany({
-      where: { ...jobScope, createdAt: { gte: queryStart, lt: queryEnd } },
+      where: { ...jobScope, ...visibleJobWhere, createdAt: { gte: queryStart, lt: queryEnd } },
       select: { id: true, createdAt: true, profileId: true, applyStatus: true },
     }),
     prisma.profile.findMany({ where: await profileWhere(), select: { id: true, fullName: true } }),
