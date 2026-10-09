@@ -32,11 +32,14 @@ export type KeyHealth = {
 };
 
 /** Long enough that repeated clicks don't re-probe, short enough that a fixed
- *  key is noticed quickly. Switching a key calls resetKeyHealth(), so this is
- *  only a backstop. */
+ *  key is noticed quickly. A key switch invalidates the entry on its own (the
+ *  verdict is stored with the secret it was taken on), so this is only a
+ *  backstop for a key that changes state without changing value. */
 const TTL_MS = 60_000;
 
-let cached: KeyHealth | null = null;
+/** The verdict is stored WITH the key it was taken on: switching keys makes the
+ *  cached answer invalid immediately, however it was switched. */
+let cached: (KeyHealth & { secret: string }) | null = null;
 let inFlight: Promise<KeyHealth> | null = null;
 
 /** Drop the cached verdict -- used after a key is rotated or switched. */
@@ -45,23 +48,25 @@ export function resetKeyHealth(): void {
 }
 
 export async function llmKeyHealth(opts?: { force?: boolean }): Promise<KeyHealth> {
-  if (!opts?.force && cached && Date.now() - cached.checkedAt < TTL_MS) return cached;
+  const secret = await activeKeySecret();
+  const fresh = cached && cached.secret === secret && Date.now() - cached.checkedAt < TTL_MS;
+  if (!opts?.force && fresh) return cached as KeyHealth;
   // Collapse concurrent callers (several dashboards polling at once) onto one probe.
   if (inFlight) return inFlight;
-  inFlight = probe().finally(() => {
+  inFlight = probe(secret).finally(() => {
     inFlight = null;
   });
   return inFlight;
 }
 
-async function probe(): Promise<KeyHealth> {
-  const key = await activeKeySecret();
+async function probe(key: string): Promise<KeyHealth> {
   if (!key) {
     cached = {
       ok: false,
       status: "error",
       reason: "No OpenAI API key is set. Add one in Admin > API keys.",
       checkedAt: Date.now(),
+      secret: key,
     };
     return cached;
   }
@@ -71,6 +76,7 @@ async function probe(): Promise<KeyHealth> {
     status,
     reason: isUsable(status) ? undefined : detail,
     checkedAt: Date.now(),
+    secret: key,
   };
   return cached;
 }

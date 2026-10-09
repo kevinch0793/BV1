@@ -55,3 +55,30 @@ export function looksLikeOpenAIKey(secret: string): boolean {
   const s = (secret || "").trim();
   return s.startsWith("sk-") && s.length >= 40 && !/\s/.test(s);
 }
+
+/**
+ * Classify an error THROWN by the OpenAI SDK, as opposed to a probe response.
+ *
+ * The SDK raises APIError with the HTTP status on `status` and the upstream
+ * message folded into `message`, so the same rules apply -- the quota markers
+ * that distinguish an empty account from a real rate limit travel in the text.
+ * A transport failure has no status and classifies as a plain error, which is
+ * correct: it says nothing about the key.
+ */
+export function classifyThrown(e: unknown): KeyStatus {
+  const err = e as { status?: unknown; message?: unknown; code?: unknown } | null;
+  const httpStatus = typeof err?.status === "number" ? err.status : 0;
+  const text = [err?.message, err?.code].filter((v): v is string => typeof v === "string").join(" ");
+  return classifyProbe(httpStatus, text).status;
+}
+
+/**
+ * Is this failure the key's fault in a way another key could fix?
+ *
+ * Only an exhausted account or a rejected key. A rate limit is deliberately
+ * excluded: it is transient and shared across the account, so burning a healthy
+ * spare on it would spend both keys to no purpose.
+ */
+export function shouldRotate(status: KeyStatus): boolean {
+  return status === "no_credit" || status === "revoked";
+}

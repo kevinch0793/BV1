@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { classifyProbe, maskKey, type KeyStatus } from "@/lib/apiKeyStatus";
+import { alertAllKeysExhausted, rearmKeyAlert } from "@/lib/alerts";
 
 /**
  * The OpenAI key the platform is currently using, and the live checks behind the
@@ -91,4 +92,72 @@ export async function seedFromEnvIfEmpty(): Promise<void> {
     data: { label: "From .env", secret: envKey, last6: maskKey(envKey), active: true },
   });
   invalidateActiveKey();
+}
+
+/**
+ * The active key cannot work -- promote the first stored key that can.
+ *
+ * Called when a real OpenAI call fails with an exhausted or rejected key, so the
+ * platform recovers without anyone watching. Running out of credit used to stop
+ * every pipeline and every extension answer until someone noticed and switched
+ * by hand, which in practice meant a user reporting it hours later.
+ *
+ * Returns true if a usable key is now active. When nothing is usable it raises
+ * the operator alert and returns false; callers should surface the original
+ * error, leaving work pending for the next sweep to retry.
+ *
+ * Concurrency: a busy pipeline fails many calls at once, and each would
+ * otherwise probe every key. One rotation runs at a time and the rest await its
+ * result, so a rotation costs one pass over the keys however many callers hit it.
+ */
+let rotation: Promise<boolean> | null = null;
+
+export async function rotateToUsableKey(reason: string): Promise<boolean> {
+  if (rotation) return rotation;
+  rotation = doRotate(reason).finally(() => {
+    rotation = null;
+  });
+  return rotation;
+}
+
+async function doRotate(reason: string): Promise<boolean> {
+  const keys = await prisma.apiKey.findMany({
+    orderBy: [{ active: "desc" }, { createdAt: "asc" }],
+    select: { id: true, label: true, secret: true, active: true },
+  });
+  const current = keys.find((k) => k.active);
+
+  // Record why the current key was abandoned, so /admin/keys explains itself.
+  if (current) {
+    await prisma.apiKey
+      .update({
+        where: { id: current.id },
+        data: { lastStatus: reason === "revoked" ? "revoked" : "no_credit", lastDetail: `Switched away automatically: ${reason}`, lastCheckedAt: new Date() },
+      })
+      .catch(() => undefined);
+  }
+
+  for (const candidate of keys) {
+    if (candidate.active) continue;
+    const probe = await probeKey(candidate.secret);
+    await prisma.apiKey
+      .update({
+        where: { id: candidate.id },
+        data: { lastStatus: probe.status, lastDetail: probe.detail, lastCheckedAt: new Date() },
+      })
+      .catch(() => undefined);
+    if (probe.status !== "ok") continue;
+
+    await prisma.apiKey.updateMany({ where: { active: true }, data: { active: false } });
+    await prisma.apiKey.update({ where: { id: candidate.id }, data: { active: true } });
+    invalidateActiveKey();
+    rearmKeyAlert();
+    console.warn(`[keys] ${current?.label ?? "active key"} is ${reason}; switched to ${candidate.label}`);
+    return true;
+  }
+
+  await alertAllKeysExhausted(
+    `${current?.label ?? "The active key"} is ${reason}, and no other stored key is usable (${keys.length} checked).`,
+  );
+  return false;
 }

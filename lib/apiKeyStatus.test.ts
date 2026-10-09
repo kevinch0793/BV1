@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { classifyProbe, isUsable, looksLikeOpenAIKey, maskKey } from "./apiKeyStatus.ts";
+import { classifyProbe, classifyThrown, isUsable, looksLikeOpenAIKey, maskKey, shouldRotate } from "./apiKeyStatus.ts";
 
 const QUOTA_BODY = '{"error":{"message":"You have no credits remaining.","type":"insufficient_quota","code":"credit_balance_exhausted"}}';
 
@@ -44,4 +44,30 @@ test("obvious non-keys are refused before storage", () => {
   assert.equal(looksLikeOpenAIKey("hello"), false);
   assert.equal(looksLikeOpenAIKey("sk-short"), false);
   assert.equal(looksLikeOpenAIKey("sk-proj-" + "a".repeat(40) + " trailing"), false);
+});
+
+test("a thrown SDK error classifies the same way a probe does", () => {
+  // The SDK folds the upstream message into `message`, so the quota marker that
+  // separates an empty account from a rate limit is still present.
+  assert.equal(classifyThrown({ status: 429, message: "429 You have no credits remaining." }), "no_credit");
+  assert.equal(classifyThrown({ status: 429, message: "429 Rate limit reached for gpt-4o" }), "rate_limited");
+  assert.equal(classifyThrown({ status: 401, message: "401 Incorrect API key provided" }), "revoked");
+});
+
+test("a transport failure is not blamed on the key", () => {
+  // No status: the request never got a verdict, so it says nothing about the key
+  // and must not trigger a rotation.
+  assert.equal(classifyThrown(new Error("socket hang up")), "error");
+  assert.equal(classifyThrown(null), "error");
+  assert.equal(shouldRotate("error"), false);
+});
+
+test("only another key can fix an exhausted or rejected key", () => {
+  assert.ok(shouldRotate("no_credit"));
+  assert.ok(shouldRotate("revoked"));
+  // Rate limits are transient and account-wide; rotating would spend a healthy
+  // spare for nothing.
+  assert.equal(shouldRotate("rate_limited"), false);
+  assert.equal(shouldRotate("ok"), false);
+  assert.equal(shouldRotate("unknown"), false);
 });

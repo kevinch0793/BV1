@@ -2,7 +2,8 @@ import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import { recordUsage } from "@/lib/llm/usage";
-import { activeKeySecret } from "@/lib/apiKeys";
+import { activeKeySecret, rotateToUsableKey } from "@/lib/apiKeys";
+import { classifyThrown, shouldRotate } from "@/lib/apiKeyStatus";
 
 // Two lazily-constructed OpenAI clients, so resume TAILORING can bill to a
 // different account than the cheap, high-volume extraction work:
@@ -46,6 +47,17 @@ async function getClient(purpose: OpenAIKeyPurpose = "extract"): Promise<OpenAI>
   return _client;
 }
 
+/**
+ * Does this purpose use the key managed in Admin > API keys?
+ *
+ * A dedicated OPENAI_TAILOR_API_KEY comes from the environment and is outside
+ * the switcher, so rotating the managed key could not fix a failure on it and
+ * the retry would fail identically.
+ */
+function usesManagedKey(purpose: OpenAIKeyPurpose): boolean {
+  return !(purpose === "tailor" && !!process.env.OPENAI_TAILOR_API_KEY?.trim());
+}
+
 export const OPENAI_EXTRACT_MODEL = process.env.OPENAI_EXTRACT_MODEL ?? "gpt-4o-mini";
 export const OPENAI_TAILOR_MODEL = process.env.OPENAI_TAILOR_MODEL ?? "gpt-4o";
 
@@ -71,16 +83,32 @@ export async function generateStructuredOpenAI<T>({
   /** Which API key to bill this call to. Defaults to the shared extraction key. */
   keyPurpose?: OpenAIKeyPurpose;
 }): Promise<T> {
+  const call = async () =>
+    (await getClient(keyPurpose)).chat.completions.parse({
+      model,
+      max_completion_tokens: maxTokens,
+      messages: [
+        ...(system ? [{ role: "system" as const, content: system }] : []),
+        { role: "user" as const, content: prompt },
+      ],
+      response_format: zodResponseFormat(schema, schemaName),
+    });
+
   const t0 = Date.now();
-  const completion = await (await getClient(keyPurpose)).chat.completions.parse({
-    model,
-    max_completion_tokens: maxTokens,
-    messages: [
-      ...(system ? [{ role: "system" as const, content: system }] : []),
-      { role: "user" as const, content: prompt },
-    ],
-    response_format: zodResponseFormat(schema, schemaName),
-  });
+  let completion: Awaited<ReturnType<typeof call>>;
+  try {
+    completion = await call();
+  } catch (e) {
+    // An exhausted or rejected key is the one failure another key can fix, and
+    // it otherwise stops every pipeline and every extension answer until someone
+    // notices by hand. Rotate and retry ONCE: getClient rebuilds on the new
+    // secret, and a second failure is reported normally so the job stays pending
+    // rather than looping.
+    const status = classifyThrown(e);
+    if (!usesManagedKey(keyPurpose) || !shouldRotate(status)) throw e;
+    if (!(await rotateToUsableKey(status))) throw e;
+    completion = await call();
+  }
   recordUsage({
     provider: "openai",
     model,
